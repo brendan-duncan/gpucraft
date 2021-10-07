@@ -48,7 +48,7 @@ export class Texture {
         const width = options.width;
         const height = options.height;
         const format = options.format ?? "rgba8unorm";
-        const usage = options.usage ?? GPUTextureUsage.SAMPLED;
+        const usage = options.usage ?? GPUTextureUsage.TEXTURE_BINDING;
 
         this.gpu = this.device.createTexture({
             size: [width, height],
@@ -77,7 +77,7 @@ export class Texture {
             this.gpu = device.createTexture({
                 size: [ imageBitmap.width, imageBitmap.height ],
                 format: "rgba8unorm",
-                usage: GPUTextureUsage.SAMPLED | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
             });
 
             device.queue.copyExternalImageToTexture(

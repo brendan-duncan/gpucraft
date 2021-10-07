@@ -47,7 +47,7 @@ export class TextureUtil {
         const texture = this.device.createTexture({
             size: textureSize,
             format: "rgba8unorm",
-            usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.SAMPLED | GPUTextureUsage.RENDER_ATTACHMENT,
+            usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
             mipLevelCount: mipLevelCount
         });
 
@@ -109,20 +109,20 @@ struct VertexOutput {
 };`;
 
 const mipmapVertex = `
-let pos: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
+var<private> pos: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
     vec2<f32>(-1.0, 1.0),
     vec2<f32>(1.0, 1.0),
     vec2<f32>(-1.0, -1.0),
     vec2<f32>(1.0, -1.0));
 
-let tex: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
+var<private> tex: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
     vec2<f32>(0.0, 0.0),
     vec2<f32>(1.0, 0.0),
     vec2<f32>(0.0, 1.0),
     vec2<f32>(1.0, 1.0));
 
 struct VertexInput {
-    [[builtin(vertex_index)]] vertexIndex: i32;
+    [[builtin(vertex_index)]] vertexIndex: u32;
 };
 
 ${vertexOutput}
@@ -130,8 +130,10 @@ ${vertexOutput}
 [[stage(vertex)]]
 fn main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
+
     output.v_uv = tex[input.vertexIndex];
     output.v_position = vec4<f32>(pos[input.vertexIndex], 0.0, 1.0);
+
     return output;
 }`;
 

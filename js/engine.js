@@ -22,7 +22,7 @@ export class Engine {
         this.canvas = canvas;
         this.adapter = await navigator.gpu.requestAdapter();
         this.device = await this.adapter.requestDevice();
-        this.context = this.canvas.getContext("gpupresent");
+        this.context = this.canvas.getContext("webgpu");
 
         const device = this.device;
 
