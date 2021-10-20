@@ -1,5 +1,8 @@
 import { Engine } from "./engine.js";
 
-const canvas = document.getElementById("gpucraft");
-const engine = new Engine();
-engine.run(canvas, { autoResizeCanvas: true });
+function main() {
+    const canvas = document.getElementById("gpucraft");
+    const engine = new Engine();
+    engine.run(canvas, { autoResizeCanvas: true });
+}
+window.addEventListener('load', main);
