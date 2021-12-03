@@ -2,7 +2,7 @@
 
 Simple WebGPU minecraft clone.
 
-## Play
+## Try It Out
 
 https://brendan-duncan.github.io/gpucraft
 
