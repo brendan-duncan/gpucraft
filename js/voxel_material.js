@@ -238,11 +238,11 @@ struct VertexOutput {
 };`;
 
 const voxelVertex = `
-[[block]] struct ViewUniforms {
+struct ViewUniforms {
     viewProjection: mat4x4<f32>;
 };
 
-[[block]] struct ModelUniforms {
+struct ModelUniforms {
     model: mat4x4<f32>;
 };
 
