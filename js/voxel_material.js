@@ -50,14 +50,13 @@ export class VoxelMaterial {
             bindGroupLayouts: [this.bindGroupLayout]
         });
 
-        this.vertexShader = device.createShaderModule({ code: voxelVertex });
-        this.fragmentShader = device.createShaderModule({ code: voxelFragment });
+        this.shaderModule = device.createShaderModule({ code: shaderSource });
 
         this.pipeline = device.createRenderPipeline({
             layout: this.pipelineLayout,
             vertex: {
-                module: this.vertexShader,
-                entryPoint: 'main',
+                module: this.shaderModule,
+                entryPoint: 'vertexMain',
                 buffers: [
                     {
                         // Position
@@ -106,8 +105,8 @@ export class VoxelMaterial {
                 ]
             },
             fragment: {
-                module: this.fragmentShader,
-                entryPoint: 'main',
+                module: this.shaderModule,
+                entryPoint: 'fragmentMain',
                 targets: [ { format: 'bgra8unorm' } ]
             },
             primitive: {
@@ -228,16 +227,7 @@ export class VoxelMaterial {
     }
 }
 
-const vertexOutput = `
-struct VertexOutput {
-    [[builtin(position)]] Position: vec4<f32>;
-    [[location(0)]] v_position: vec4<f32>;
-    [[location(1)]] v_normal: vec3<f32>;
-    [[location(2)]] v_color: vec4<f32>;
-    [[location(3)]] v_uv: vec2<f32>;
-};`;
-
-const voxelVertex = `
+const shaderSource = `
 struct ViewUniforms {
     viewProjection: mat4x4<f32>;
 };
@@ -256,10 +246,16 @@ struct VertexInput {
     [[location(3)]] a_uv: vec2<f32>;
 };
 
-${vertexOutput}
+struct VertexOutput {
+    [[builtin(position)]] Position: vec4<f32>;
+    [[location(0)]] v_position: vec4<f32>;
+    [[location(1)]] v_normal: vec3<f32>;
+    [[location(2)]] v_color: vec4<f32>;
+    [[location(3)]] v_uv: vec2<f32>;
+};
 
 [[stage(vertex)]]
-fn main(input: VertexInput) -> VertexOutput {
+fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.Position = viewUniforms.viewProjection * modelUniforms.model * vec4<f32>(input.a_position, 1.0);
     output.v_position = output.Position;
@@ -267,16 +263,13 @@ fn main(input: VertexInput) -> VertexOutput {
     output.v_color = input.a_color;
     output.v_uv = input.a_uv;
     return output;
-}`;
+}
 
-const voxelFragment = `
 [[binding(2), group(0)]] var u_sampler: sampler;
 [[binding(3), group(0)]] var u_texture: texture_2d<f32>;
 
-${vertexOutput}
-
 [[stage(fragment)]]
-fn main(input: VertexOutput) -> [[location(0)]] vec4<f32> {
+fn fragmentMain(input: VertexOutput) -> [[location(0)]] vec4<f32> {
     let GlobalLightLevel: f32 = 0.8;
     let minGlobalLightLevel: f32 = 0.2;
     let maxGlobalLightLevel: f32 = 0.9;

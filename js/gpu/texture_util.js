@@ -15,14 +15,16 @@ export class TextureUtil {
 
         this.mipmapSampler = device.createSampler({ minFilter: 'linear' });
 
-         this.mipmapPipeline = device.createRenderPipeline({
+        const shaderModule = device.createShaderModule({ code: mipmapShader });
+
+        this.mipmapPipeline = device.createRenderPipeline({
             vertex: {
-                module: device.createShaderModule({ code: mipmapVertex }),
-                entryPoint: 'main'
+                module: shaderModule,
+                entryPoint: 'vertexMain'
             },
             fragment: {
-                module: device.createShaderModule({ code: mipmapFragment }),
-                entryPoint: 'main',
+                module: shaderModule,
+                entryPoint: 'fragmentMain',
                 targets: [ { format: 'rgba8unorm' } ]
             },
             primitive: {
@@ -102,13 +104,7 @@ export class TextureUtil {
 
 TextureUtil._devices = new Map();
 
-const vertexOutput = `
-struct VertexOutput {
-    [[builtin(position)]] v_position: vec4<f32>;
-    [[location(0)]] v_uv : vec2<f32>;
-};`;
-
-const mipmapVertex = `
+const mipmapShader = `
 var<private> pos: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
     vec2<f32>(-1.0, 1.0),
     vec2<f32>(1.0, 1.0),
@@ -125,26 +121,26 @@ struct VertexInput {
     [[builtin(vertex_index)]] vertexIndex: u32;
 };
 
-${vertexOutput}
+struct VertexOutput {
+    [[builtin(position)]] v_position: vec4<f32>;
+    [[location(0)]] v_uv : vec2<f32>;
+};
 
 [[stage(vertex)]]
-fn main(input: VertexInput) -> VertexOutput {
+fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
     output.v_uv = tex[input.vertexIndex];
     output.v_position = vec4<f32>(pos[input.vertexIndex], 0.0, 1.0);
 
     return output;
-}`;
+}
 
-const mipmapFragment = `
 [[binding(0), group(0)]] var imgSampler: sampler;
 [[binding(1), group(0)]] var img: texture_2d<f32>;
 
-${vertexOutput}
-
 [[stage(fragment)]]
-fn main(input: VertexOutput) -> [[location(0)]] vec4<f32> {
+fn fragmentMain(input: VertexOutput) -> [[location(0)]] vec4<f32> {
     var outColor = textureSample(img, imgSampler, input.v_uv);
     return outColor;
 }`;

@@ -50,11 +50,13 @@ export class Skybox {
             bindGroupLayouts: [this.bindGroupLayout]
         });
 
+        this.shaderModule = device.createShaderModule({ code: skyShader });
+
         this.pipeline = device.createRenderPipeline({
             layout: this.pipelineLayout,
             vertex: {
-                module: device.createShaderModule({ code: skyVertex }),
-                entryPoint: 'main',
+                module: this.shaderModule,
+                entryPoint: 'vertexMain',
                 buffers: [
                     {
                         arrayStride: CubeMesh.vertexSize,
@@ -70,8 +72,8 @@ export class Skybox {
                 ]
             },
             fragment: {
-                module: device.createShaderModule({ code: skyFragment }),
-                entryPoint: 'main',
+                module: this.shaderModule,
+                entryPoint: 'fragmentMain',
                 targets: [
                     {
                         format: 'bgra8unorm'
@@ -143,13 +145,7 @@ export class Skybox {
     }
 }
 
-const vertexOutput = `
-struct VertexOutput {
-    [[builtin(position)]] Position: vec4<f32>;
-    [[location(0)]] v_position: vec4<f32>;
-};`;
-
-const skyVertex = `
+const skyShader = `
 struct Uniforms {
     u_modelViewProjection: mat4x4<f32>;
 };
@@ -160,21 +156,21 @@ struct VertexInput {
     [[location(0)]] position: vec4<f32>;
 };
 
-${vertexOutput}
+struct VertexOutput {
+    [[builtin(position)]] Position: vec4<f32>;
+    [[location(0)]] v_position: vec4<f32>;
+};
 
 [[stage(vertex)]]
-fn main(input: VertexInput) -> VertexOutput {
+fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.Position = uniforms.u_modelViewProjection * input.position;
     output.v_position = input.position;
     return output;
-}`;
+}
 
-const skyFragment = `
 [[binding(1), group(0)]] var skySampler: sampler;
 [[binding(2), group(0)]] var skyTexture: texture_2d<f32>;
-
-${vertexOutput}
 
 fn polarToCartesian(V: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(0.5 - (atan2(V.z, V.x) / -6.28318531),
@@ -182,7 +178,7 @@ fn polarToCartesian(V: vec3<f32>) -> vec2<f32> {
 }
 
 [[stage(fragment)]]
-fn main(input: VertexOutput) -> [[location(0)]] vec4<f32> {
+fn fragmentMain(input: VertexOutput) -> [[location(0)]] vec4<f32> {
     var outColor = textureSample(skyTexture, skySampler, polarToCartesian(normalize(input.v_position.xyz)));
     return outColor;
 }`;
