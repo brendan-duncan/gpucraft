@@ -118,15 +118,15 @@ var<private> tex: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
     vec2<f32>(1.0, 1.0));
 
 struct VertexInput {
-    [[builtin(vertex_index)]] vertexIndex: u32;
+    @builtin(vertex_index) vertexIndex: u32;
 };
 
 struct VertexOutput {
-    [[builtin(position)]] v_position: vec4<f32>;
-    [[location(0)]] v_uv : vec2<f32>;
+    @builtin(position) v_position: vec4<f32>;
+    @location(0) v_uv : vec2<f32>;
 };
 
-[[stage(vertex)]]
+@stage(vertex)
 fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
@@ -136,11 +136,11 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     return output;
 }
 
-[[binding(0), group(0)]] var imgSampler: sampler;
-[[binding(1), group(0)]] var img: texture_2d<f32>;
+@binding(0) @group(0) var imgSampler: sampler;
+@binding(1) @group(0) var img: texture_2d<f32>;
 
-[[stage(fragment)]]
-fn fragmentMain(input: VertexOutput) -> [[location(0)]] vec4<f32> {
+@stage(fragment)
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     var outColor = textureSample(img, imgSampler, input.v_uv);
     return outColor;
 }`;

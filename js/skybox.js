@@ -150,18 +150,18 @@ struct Uniforms {
     u_modelViewProjection: mat4x4<f32>;
 };
 
-[[binding(0), group(0)]] var<uniform> uniforms : Uniforms;
+@binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
 struct VertexInput {
-    [[location(0)]] position: vec4<f32>;
+    @location(0) position: vec4<f32>;
 };
 
 struct VertexOutput {
-    [[builtin(position)]] Position: vec4<f32>;
-    [[location(0)]] v_position: vec4<f32>;
+    @builtin(position) Position: vec4<f32>;
+    @location(0) v_position: vec4<f32>;
 };
 
-[[stage(vertex)]]
+@stage(vertex)
 fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.Position = uniforms.u_modelViewProjection * input.position;
@@ -169,16 +169,16 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     return output;
 }
 
-[[binding(1), group(0)]] var skySampler: sampler;
-[[binding(2), group(0)]] var skyTexture: texture_2d<f32>;
+@binding(1) @group(0) var skySampler: sampler;
+@binding(2) @group(0) var skyTexture: texture_2d<f32>;
 
 fn polarToCartesian(V: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(0.5 - (atan2(V.z, V.x) / -6.28318531),
                      1.0 - (asin(V.y) / 1.57079633 * 0.5 + 0.5));
 }
 
-[[stage(fragment)]]
-fn fragmentMain(input: VertexOutput) -> [[location(0)]] vec4<f32> {
+@stage(fragment)
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     var outColor = textureSample(skyTexture, skySampler, polarToCartesian(normalize(input.v_position.xyz)));
     return outColor;
 }`;
