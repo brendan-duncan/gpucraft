@@ -1,5 +1,3 @@
-// Derived from: https://github.com/toji/webgpu-test/blob/main/js/webgpu-renderer/webgpu-texture-helper.js
-
 /* eslint-disable no-undef */
 export class TextureUtil {
     static get(device) {
@@ -83,14 +81,15 @@ export class TextureUtil {
                         baseMipLevel: i,
                         mipLevelCount: 1
                     }),
-                    loadValue: 'load'
+                    loadOp: "load",
+                    storeOp: "store"
                 }]
             });
 
             passEncoder.setPipeline(this.mipmapPipeline);
             passEncoder.setBindGroup(0, bindGroup);
-            passEncoder.draw(4, 1, 0, 0);
-            passEncoder.endPass();
+            passEncoder.draw(3, 1, 0, 0);
+            passEncoder.end();
 
             textureSize.width = Math.ceil(textureSize.width / 2);
             textureSize.height = Math.ceil(textureSize.height / 2);
@@ -105,33 +104,22 @@ export class TextureUtil {
 TextureUtil._devices = new Map();
 
 const mipmapShader = `
-var<private> pos: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
-    vec2<f32>(-1.0, 1.0),
-    vec2<f32>(1.0, 1.0),
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>(1.0, -1.0));
-
-var<private> tex: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
-    vec2<f32>(0.0, 0.0),
-    vec2<f32>(1.0, 0.0),
-    vec2<f32>(0.0, 1.0),
-    vec2<f32>(1.0, 1.0));
-
-struct VertexInput {
-    @builtin(vertex_index) vertexIndex: u32;
-};
+var<private> posTex: array<vec4<f32>, 3> = array<vec4<f32>, 3>(
+    vec4<f32>(-1.0, 1.0, 0.0, 0.0),
+    vec4<f32>(3.0, 1.0, 2.0, 0.0),
+    vec4<f32>(-1.0, -3.0, 0.0, 2.0));
 
 struct VertexOutput {
-    @builtin(position) v_position: vec4<f32>;
-    @location(0) v_uv : vec2<f32>;
+    @builtin(position) v_position: vec4<f32>,
+    @location(0) v_uv : vec2<f32>
 };
 
 @stage(vertex)
-fn vertexMain(input: VertexInput) -> VertexOutput {
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     var output: VertexOutput;
 
-    output.v_uv = tex[input.vertexIndex];
-    output.v_position = vec4<f32>(pos[input.vertexIndex], 0.0, 1.0);
+    output.v_uv = posTex[vertexIndex].zw;
+    output.v_position = vec4<f32>(posTex[vertexIndex].xy, 0.0, 1.0);
 
     return output;
 }
@@ -141,27 +129,5 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 
 @stage(fragment)
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-    var outColor = textureSample(img, imgSampler, input.v_uv);
-    return outColor;
+    return textureSample(img, imgSampler, input.v_uv);
 }`;
-
-
-// Copyright 2020 Brandon Jones
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.

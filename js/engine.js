@@ -28,7 +28,8 @@ export class Engine {
 
         this.context.configure({
             device,
-            format: 'bgra8unorm',
+            format: this.context.getPreferredFormat(this.adapter),
+            compositingAlphaMode: "opaque",
             size: { width: canvas.width, height: canvas.height }
         });
 
@@ -38,16 +39,19 @@ export class Engine {
 
         this.colorAttachment = {
             view: undefined, // this is set in the render loop
-            loadValue: { r: 0.1, g: 0.1, b: 0.2, a: 1.0 },
+            loadOp: "clear",
+            clearValue: { r: 0.1, g: 0.1, b: 0.2, a: 1.0 },
             storeOp: 'store'
         };
 
         this.depthAttachment = {
             view: this.depthTexture.createView(),
-            depthLoadValue: 1.0,
-            depthStoreOp: 'store',
-            stencilLoadValue: 0,
-            stencilStoreOp: 'store'
+            depthLoadOp: "clear",
+            depthClearValue: 1.0,
+            depthStoreOp: "store",
+            stencilLoadOp: "clear",
+            stencilClearValue: 0,
+            stencilStoreOp: "store"
         };
 
         this.renderPassDescriptor = {
@@ -143,7 +147,7 @@ export class Engine {
 
         this.skybox.draw(this.camera, passEncoder);
 
-        passEncoder.endPass();
+        passEncoder.end();
         this.device.queue.submit([commandEncoder.finish()]);
     }
 
@@ -152,7 +156,8 @@ export class Engine {
 
         this.context.configure({
             device: this.device,
-            format: 'bgra8unorm',
+            format: this.context.getPreferredFormat(this.adapter),
+            compositingAlphaMode: "opaque",
             size: { width: this.canvas.width, height: this.canvas.height }
         });
 

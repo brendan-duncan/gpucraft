@@ -147,18 +147,18 @@ export class Skybox {
 
 const skyShader = `
 struct Uniforms {
-    u_modelViewProjection: mat4x4<f32>;
+    u_modelViewProjection: mat4x4<f32>
 };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
 struct VertexInput {
-    @location(0) position: vec4<f32>;
+    @location(0) position: vec4<f32>
 };
 
 struct VertexOutput {
-    @builtin(position) Position: vec4<f32>;
-    @location(0) v_position: vec4<f32>;
+    @builtin(position) Position: vec4<f32>,
+    @location(0) v_position: vec4<f32>
 };
 
 @stage(vertex)

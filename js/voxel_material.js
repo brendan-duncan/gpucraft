@@ -229,29 +229,29 @@ export class VoxelMaterial {
 
 const shaderSource = `
 struct ViewUniforms {
-    viewProjection: mat4x4<f32>;
+    viewProjection: mat4x4<f32>
 };
 
 struct ModelUniforms {
-    model: mat4x4<f32>;
+    model: mat4x4<f32>
 };
 
 @binding(0) @group(0) var<uniform> viewUniforms: ViewUniforms;
 @binding(1) @group(0) var<uniform> modelUniforms: ModelUniforms;
 
 struct VertexInput {
-    @location(0) a_position: vec3<f32>;
-    @location(1) a_normal: vec3<f32>;
-    @location(2) a_color: vec4<f32>;
-    @location(3) a_uv: vec2<f32>;
+    @location(0) a_position: vec3<f32>,
+    @location(1) a_normal: vec3<f32>,
+    @location(2) a_color: vec4<f32>,
+    @location(3) a_uv: vec2<f32>
 };
 
 struct VertexOutput {
-    @builtin(position) Position: vec4<f32>;
-    @location(0) v_position: vec4<f32>;
-    @location(1) v_normal: vec3<f32>;
-    @location(2) v_color: vec4<f32>;
-    @location(3) v_uv: vec2<f32>;
+    @builtin(position) Position: vec4<f32>,
+    @location(0) v_position: vec4<f32>,
+    @location(1) v_normal: vec3<f32>,
+    @location(2) v_color: vec4<f32>,
+    @location(3) v_uv: vec2<f32>
 };
 
 @stage(vertex)
