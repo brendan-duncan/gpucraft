@@ -28,7 +28,8 @@ export class TextureUtil {
             primitive: {
                 topology: 'triangle-strip',
                 stripIndexFormat: 'uint32'
-            }
+            },
+            layout: "auto"
         });
     }
 

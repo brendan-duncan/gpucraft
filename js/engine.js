@@ -28,9 +28,8 @@ export class Engine {
 
         this.context.configure({
             device,
-            format: this.context.getPreferredFormat(this.adapter),
-            compositingAlphaMode: "opaque",
-            size: { width: canvas.width, height: canvas.height }
+            format: navigator.gpu.getPreferredCanvasFormat(),
+            compositingAlphaMode: "opaque"
         });
 
         this.depthTexture = Texture.renderBuffer(this.device,
@@ -153,13 +152,6 @@ export class Engine {
 
     _onCanvasResize() {
         if (!this.depthTexture) return;
-
-        this.context.configure({
-            device: this.device,
-            format: this.context.getPreferredFormat(this.adapter),
-            compositingAlphaMode: "opaque",
-            size: { width: this.canvas.width, height: this.canvas.height }
-        });
 
         this.depthTexture.destroy();
         this.depthTexture = Texture.renderBuffer(this.device, this.canvas.width, this.canvas.height,
