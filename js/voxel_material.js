@@ -254,7 +254,7 @@ struct VertexOutput {
     @location(3) v_uv: vec2<f32>
 };
 
-@stage(vertex)
+@vertex
 fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.Position = viewUniforms.viewProjection * modelUniforms.model * vec4<f32>(input.a_position, 1.0);
@@ -268,7 +268,7 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 @binding(2) @group(0) var u_sampler: sampler;
 @binding(3) @group(0) var u_texture: texture_2d<f32>;
 
-@stage(fragment)
+@fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     let GlobalLightLevel: f32 = 0.8;
     let minGlobalLightLevel: f32 = 0.2;

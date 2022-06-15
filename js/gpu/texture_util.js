@@ -115,7 +115,7 @@ struct VertexOutput {
     @location(0) v_uv : vec2<f32>
 };
 
-@stage(vertex)
+@vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     var output: VertexOutput;
 
@@ -128,7 +128,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 @binding(0) @group(0) var imgSampler: sampler;
 @binding(1) @group(0) var img: texture_2d<f32>;
 
-@stage(fragment)
+@fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     return textureSample(img, imgSampler, input.v_uv);
 }`;

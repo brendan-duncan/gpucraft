@@ -29,7 +29,7 @@ export class Engine {
         this.context.configure({
             device,
             format: navigator.gpu.getPreferredCanvasFormat(),
-            compositingAlphaMode: "opaque"
+            alphaMode: "opaque"
         });
 
         this.depthTexture = Texture.renderBuffer(this.device,

@@ -161,7 +161,7 @@ struct VertexOutput {
     @location(0) v_position: vec4<f32>
 };
 
-@stage(vertex)
+@vertex
 fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.Position = uniforms.u_modelViewProjection * input.position;
@@ -177,7 +177,7 @@ fn polarToCartesian(V: vec3<f32>) -> vec2<f32> {
                      1.0 - (asin(V.y) / 1.57079633 * 0.5 + 0.5));
 }
 
-@stage(fragment)
+@fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     var outColor = textureSample(skyTexture, skySampler, polarToCartesian(normalize(input.v_position.xyz)));
     return outColor;
