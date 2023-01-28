@@ -8,155 +8,162 @@ import { World } from "./world.js";
 import { VoxelMaterial } from "./voxel_material.js";
 
 export class Engine {
-    constructor() {
-        this.initialized = false;
+  constructor() {
+    this.initialized = false;
+  }
+
+  async run(canvas, options) {
+    options = options || {};
+
+    Globals.engine = this;
+    Globals.canvas = canvas;
+    Globals.input = new Input(canvas);
+
+    this.canvas = canvas;
+    this.adapter = await navigator.gpu.requestAdapter();
+    this.device = await this.adapter.requestDevice();
+    this.context = this.canvas.getContext("webgpu");
+    this.preferredFormat = navigator.gpu.getPreferredCanvasFormat();
+
+    const device = this.device;
+
+    this.context.configure({
+      device,
+      format: this.preferredFormat,
+      alphaMode: "opaque",
+    });
+
+    this.depthTexture = Texture.renderBuffer(
+      this.device,
+      this.canvas.width,
+      this.canvas.height,
+      "depth24plus-stencil8"
+    );
+
+    this.colorAttachment = {
+      view: undefined, // this is set in the render loop
+      loadOp: "clear",
+      clearValue: { r: 0.1, g: 0.1, b: 0.2, a: 1.0 },
+      storeOp: "store",
+    };
+
+    this.depthAttachment = {
+      view: this.depthTexture.createView(),
+      depthLoadOp: "clear",
+      depthClearValue: 1.0,
+      depthStoreOp: "store",
+      stencilLoadOp: "clear",
+      stencilClearValue: 0,
+      stencilStoreOp: "store",
+    };
+
+    this.renderPassDescriptor = {
+      colorAttachments: [this.colorAttachment],
+      depthStencilAttachment: this.depthAttachment,
+    };
+
+    this.autoResizeCanvas = !!options.autoResizeCanvas;
+    if (options.autoResizeCanvas) {
+      this.updateCanvasResolution();
     }
 
-    async run(canvas, options) {
-        options = options || {};
+    this.skybox = new Skybox(this.device, this.preferredFormat);
 
-        Globals.engine = this;
-        Globals.canvas = canvas;
-        Globals.input = new Input(canvas);
+    this.camera = new Camera();
 
-        this.canvas = canvas;
-        this.adapter = await navigator.gpu.requestAdapter();
-        this.device = await this.adapter.requestDevice();
-        this.context = this.canvas.getContext("webgpu");
+    this.player = new Player(this.camera);
+    this.world = new World();
 
-        const device = this.device;
+    this.voxelMaterial = new VoxelMaterial(this.device, this.preferredFormat);
 
-        this.context.configure({
-            device,
-            format: navigator.gpu.getPreferredCanvasFormat(),
-            alphaMode: "opaque"
-        });
+    this.world.start();
 
-        this.depthTexture = Texture.renderBuffer(this.device,
-            this.canvas.width, this.canvas.height,
-            "depth24plus-stencil8");
+    this.initialized = true;
 
-        this.colorAttachment = {
-            view: undefined, // this is set in the render loop
-            loadOp: "clear",
-            clearValue: { r: 0.1, g: 0.1, b: 0.2, a: 1.0 },
-            storeOp: 'store'
-        };
+    Globals.time = Globals.now() * 0.01;
 
-        this.depthAttachment = {
-            view: this.depthTexture.createView(),
-            depthLoadOp: "clear",
-            depthClearValue: 1.0,
-            depthStoreOp: "store",
-            stencilLoadOp: "clear",
-            stencilClearValue: 0,
-            stencilStoreOp: "store"
-        };
+    const self = this;
+    const frame = function () {
+      requestAnimationFrame(frame);
+      const lastTime = Globals.time;
+      Globals.time = Globals.now() * 0.01;
+      Globals.deltaTime = Globals.time - lastTime;
+      self.update();
+      self.render();
+    };
+    requestAnimationFrame(frame);
+  }
 
-        this.renderPassDescriptor = {
-            colorAttachments: [this.colorAttachment],
-            depthStencilAttachment: this.depthAttachment
-        };
+  updateCanvasResolution() {
+    const canvas = this.canvas;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width != canvas.width || rect.height != canvas.height) {
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      this._onCanvasResize();
+    }
+  }
 
-        this.autoResizeCanvas = !!options.autoResizeCanvas;
-        if (options.autoResizeCanvas) {
-            this.updateCanvasResolution();
+  update() {
+    if (this.autoResizeCanvas) {
+      this.updateCanvasResolution();
+    }
+
+    this.camera.aspect = this.canvas.width / this.canvas.height;
+
+    this.world.update(this.device);
+    this.player.update();
+
+    this.voxelMaterial.updateCamera(this.camera);
+  }
+
+  render() {
+    this.colorAttachment.view = this.context.getCurrentTexture().createView();
+
+    const commandEncoder = this.device.createCommandEncoder();
+    const passEncoder = commandEncoder.beginRenderPass(
+      this.renderPassDescriptor
+    );
+
+    if (this.voxelMaterial.textureLoaded) {
+      if (Globals.deltaTime > Globals.maxDeltaTime) {
+        Globals.maxDeltaTime = Globals.deltaTime;
+      }
+    }
+
+    const world = this.world;
+    const numObjects = world.children.length;
+    let drawCount = 0;
+    for (let i = 0; i < numObjects; ++i) {
+      const chunk = world.children[i];
+      if (!chunk.active) continue;
+
+      if (chunk.mesh) {
+        if (!drawCount) {
+          this.voxelMaterial.startRender(passEncoder);
         }
-
-        this.skybox = new Skybox(this.device);
-
-        this.camera = new Camera();
-
-        this.player = new Player(this.camera);
-        this.world = new World();
-
-        this.voxelMaterial = new VoxelMaterial(this.device);
-
-        this.world.start();
-
-        this.initialized = true;
-
-        Globals.time = Globals.now() * 0.01;
-
-        const self = this;
-        const frame = function() {
-            requestAnimationFrame(frame);
-            const lastTime = Globals.time;
-            Globals.time = Globals.now() * 0.01;
-            Globals.deltaTime = Globals.time - lastTime;
-            self.update();
-            self.render();
-        };
-        requestAnimationFrame(frame);
+        this.voxelMaterial.drawChunk(chunk, passEncoder);
+        drawCount++;
+      }
     }
 
-    updateCanvasResolution() {
-        const canvas = this.canvas;
-        const rect = canvas.getBoundingClientRect();
-        if (rect.width != canvas.width || rect.height != canvas.height) {
-            canvas.width = rect.width;
-            canvas.height = rect.height;
-            this._onCanvasResize();
-        }
-    }
+    this.skybox.draw(this.camera, passEncoder);
 
-    update() {
-        if (this.autoResizeCanvas) {
-            this.updateCanvasResolution();
-        }
+    passEncoder.end();
+    this.device.queue.submit([commandEncoder.finish()]);
+  }
 
-        this.camera.aspect = this.canvas.width / this.canvas.height;
+  _onCanvasResize() {
+    if (!this.depthTexture) return;
 
-        this.world.update(this.device);
-        this.player.update();
+    this.depthTexture.destroy();
+    this.depthTexture = Texture.renderBuffer(
+      this.device,
+      this.canvas.width,
+      this.canvas.height,
+      "depth24plus-stencil8"
+    );
 
-        this.voxelMaterial.updateCamera(this.camera);
-    }
-
-    render() {
-        this.colorAttachment.view =
-            this.context
-            .getCurrentTexture()
-            .createView();
-
-        const commandEncoder = this.device.createCommandEncoder();
-        const passEncoder = commandEncoder.beginRenderPass(this.renderPassDescriptor);
-
-        if (this.voxelMaterial.textureLoaded) {
-            if (Globals.deltaTime > Globals.maxDeltaTime) {
-                Globals.maxDeltaTime = Globals.deltaTime;
-            }
-        }
-
-        const world = this.world;
-        const numObjects = world.children.length;
-        let drawCount = 0;
-        for (let i = 0; i < numObjects; ++i) {
-            const chunk = world.children[i];
-            if (!chunk.active) continue;
-
-            if (chunk.mesh) {
-                if (!drawCount) {
-                    this.voxelMaterial.startRender(passEncoder);
-                }
-                this.voxelMaterial.drawChunk(chunk, passEncoder);
-                drawCount++;
-            }
-        }
-
-        this.skybox.draw(this.camera, passEncoder);
-
-        passEncoder.end();
-        this.device.queue.submit([commandEncoder.finish()]);
-    }
-
-    _onCanvasResize() {
-        if (!this.depthTexture) return;
-
-        this.depthTexture.destroy();
-        this.depthTexture = Texture.renderBuffer(this.device, this.canvas.width, this.canvas.height,
-            "depth24plus-stencil8");
-
-        this.depthAttachment.view = this.depthTexture.createView();
-    }
+    this.depthAttachment.view = this.depthTexture.createView();
+  }
 }
