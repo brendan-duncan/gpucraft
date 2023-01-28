@@ -111,7 +111,7 @@ export class VoxelMaterial {
       fragment: {
         module: this.shaderModule,
         entryPoint: "fragmentMain",
-        targets: [{ format: this.preferredFormat }],
+        targets: [{ format: this.format }],
       },
       primitive: {
         topology: "triangle-list",
