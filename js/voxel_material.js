@@ -204,7 +204,7 @@ export class VoxelMaterial {
     const modelBuffer = this._getModelBuffer(index);
 
     const bindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
+      layout: this.bindGroupLayout,
       entries: [
         {
           binding: 0,

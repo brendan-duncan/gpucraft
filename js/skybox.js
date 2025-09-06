@@ -22,7 +22,7 @@ export class Skybox {
       minFilter: "linear",
       magFilter: "linear",
     });
-    this.texture = new Texture(device);
+    this.texture = new Texture(device, { mipmap: true });
     await this.texture.loadUrl("resources/sky2.jpg");
 
     this.cube = new CubeMesh(device);
@@ -102,7 +102,7 @@ export class Skybox {
     });
 
     this.uniformBindGroup = device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
+      layout: this.bindGroupLayout,
       entries: [
         {
           binding: 0,

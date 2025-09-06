@@ -21,7 +21,7 @@ export class Engine {
 
     this.canvas = canvas;
     this.adapter = await navigator.gpu.requestAdapter();
-    this.device = await this.adapter.requestDevice();
+    this.device = await this.adapter.requestDevice({ requiredFeatures: this.adapter.features, requiredLimits: this.adapter.limits });
     this.context = this.canvas.getContext("webgpu");
     this.preferredFormat = navigator.gpu.getPreferredCanvasFormat();
 
