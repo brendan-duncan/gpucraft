@@ -1,4 +1,4 @@
-export class ChunkCoord extends Uint32Array {
+export class ChunkCoord extends Int32Array {
     constructor(x = 0, z = 0) {
         super(2);
         this[0] = x;

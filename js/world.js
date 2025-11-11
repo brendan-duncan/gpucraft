@@ -371,7 +371,9 @@ export class World extends Transform {
 
         for (let i = 0, l = previouslyActiveChunks.length; i < l; ++i) {
             const coord = previouslyActiveChunks[i];
-            this.getChunk(coord.x, coord.z).isActive = false;
+            const chunk = this.getChunk(coord.x, coord.z);
+            if (chunk)
+                chunk.isActive = false;
         }
     }
 
