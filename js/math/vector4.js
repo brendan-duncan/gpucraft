@@ -87,19 +87,6 @@ export class Vector4 extends Float32Array {
 
     set w(v) { this[3] = v; }
 
-    map() {
-        switch (arguments.length) {
-            case 4:
-              return new Vector4(this[arguments[0]], this[arguments[1]],
-                this[arguments[2]], this[arguments[3]]);
-          case 3:
-              return new Vector3(this[arguments[0]], this[arguments[1]], this[arguments[2]]);
-          case 2:
-              return new Vector2(this[arguments[0]], this[arguments[1]]);
-        }
-        return null;
-    }
-
     sum() {
         return this[0] + this[1] + this[2] + this[3];
     }
@@ -203,14 +190,6 @@ export class Vector4 extends Float32Array {
         return out;
     }
 
-    static length(a) {
-        return Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3]);
-    }
-
-    static lengthSquared(a) {
-        return a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3];
-    }
-
     static distanceSquared(a, b) {
         const dx = b[0] - a[0];
         const dy = b[1] - a[1];
@@ -229,7 +208,7 @@ export class Vector4 extends Float32Array {
 
     static normalize(a, out) {
         out = out || new Vector4();
-        const l = Vector4.getLength(a);
+        const l = a.getLength();
         if (!l) {
             out.set(a);
             return out;

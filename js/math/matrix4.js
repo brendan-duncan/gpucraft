@@ -1291,20 +1291,7 @@ export class Matrix4 extends Float32Array {
         return out;
     }
 
-    /**
-     * Transpose a Matrix4.
-     * @param {Matrix4} m 
-     * @param {Matrix4?} out 
-     * @return {Matrix4}
-     */
-    static transpose(m, out) {
-        out = out || new Matrix4();
-        out.set(m[0], m[4], m[8], m[12],
-                m[1], m[5], m[9], m[13],
-                m[2], m[6], m[10], m[14],
-                m[3], m[7], m[11], m[15]);
-        return out;
-    }
+
 
     /**
      * Invert a Matrix4.
@@ -1318,37 +1305,9 @@ export class Matrix4 extends Float32Array {
         return out.invert();
     }
 
-    /**
-     * Translate a Matrix4.
-     * @param {Matrix4} m 
-     * @param {Vector3} v 
-     * @param {Matrix4?} out 
-     * @return {Matrix4}
-     */
-    static translate(m, v, out) {
-        if (out === undefined) {
-            out = this.clone();
-        } else {
-            out.set(this);
-        }
-        return out.translate(v);
-    }
 
-    /**
-     * Scale a Matrix4.
-     * @param {Matrix4} m 
-     * @param {Vector3} v 
-     * @param {Matrix4?} out 
-     * @return {Matrix4}
-     */
-    static scale(m, v, out) {
-        if (out === undefined) {
-            out = m.clone();
-        } else {
-            out.set(m);
-        }
-        return out.scale(v);
-    }
+
+
 
     /**
      * Multiply two Matrix4s.

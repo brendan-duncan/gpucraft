@@ -56,14 +56,6 @@ export class Vector2 extends Float32Array {
 
     set y(v) { this[1] = v; }
 
-    map() {
-        switch (arguments.length) {
-            case 2:
-                return new Vector2(this[arguments[0]], this[arguments[1]]);
-            }
-        return null;
-    }
-
     sum() {
         return this[0] + this[1];
     }
@@ -150,10 +142,6 @@ export class Vector2 extends Float32Array {
         out.setFrom(Math.abs(a[0]), Math.abs(a[1]));
         return out;
     }
-
-    static length(v) { return v.getLength(); }
-
-    static lengthSquared(v) { return v.getLengthSquared(); }
 
     static distanceSquared(a, b) {
         const dx = b[0] - a[0];

@@ -3,7 +3,6 @@ import { Vector3 } from "./math/vector3.js";
 import { Vector4 } from "./math/vector4.js";
 import { Globals } from "./globals.js";
 import { WorldData } from "./world_data.js";
-import { Random } from "./math/random.js";
 import { BlockType } from "./block_type.js";
 import { ChunkCoord } from "./chunk_coord.js";
 import { VoxelData } from "./voxel_data.js";
@@ -167,8 +166,6 @@ export class World extends Transform {
             "mouseSensitivity": 1.49643
         };
 
-        this.random = new Random(this.worldData.seed);
-
         this.spawnPosition = new Vector3();
 
         this.blockTypes = [
@@ -208,8 +205,6 @@ export class World extends Transform {
     get player() { return Globals.player; }
 
     start() {
-        this.random = new Random(this.seed);
-
         this.loadWorld();
         this.setGlobalLightLevel();
 
@@ -427,7 +422,7 @@ export class World extends Transform {
 
             const height = biome.terrainHeight *
                 World.get2DPerlin(x, z, 0, biome.terrainScale) * weight;
-            
+
             if (height > 0) {
                 sumOfHeights += height;
                 count++;

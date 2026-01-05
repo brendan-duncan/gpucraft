@@ -115,46 +115,6 @@ export class Vector3 extends Float32Array {
     set z(v) { this[2] = v; }
 
     /**
-     * Remap the channels of this vector.
-     * @param {number} xi The index of the channel to set x to.
-     * @param {number} yi The index of the channel to set y to.
-     * @param {number} zi The index of the channel to set z to.
-     * @return {Vector3}
-     * @example
-     * remap(1, 2, 0) // returns [y, z, x]
-     */
-    remap(xi, yi, zi) {
-        const x = this[clamp(xi, 0, 2)];
-        const y = this[clamp(yi, 0, 2)];
-        const z = this[clamp(zi, 0, 2)];
-        this[0] = x;
-        this[1] = y;
-        this[2] = z;
-        return this;
-    }
-
-    /**
-     * Map this vector to a new vector.
-     * @param {number} arguments... The variable component indices to map.
-     * @returns {number|Vector2|Vector3}
-     * @example
-     * map(1) // Returns a number with the y value of this vector.
-     * map(0, 2) // Returns a Vector2 as [x, z].
-     * map(2, 1, 0) // Returns a Vector3 with as [z, y, x].
-     */
-    map() {
-        switch (arguments.length) {
-            case 3:
-                return new Vector3(this[arguments[0]], this[arguments[1]], this[arguments[2]]);
-            case 2:
-                return new Vector2(this[arguments[0]], this[arguments[1]]);
-            case 1:
-                return this[arguments[0]];
-        }
-        return null;
-    }
-
-    /**
      * Returns the sum of the components, x + y + z.
      * @returns {number}
      */
@@ -417,24 +377,6 @@ export class Vector3 extends Float32Array {
     }
 
     /**
-     * Calculate the length of a vector.
-     * @param {Vector3} a 
-     * @returns {number}
-     */
-    static length(a) {
-        return Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
-    }
-
-    /**
-     * Calculate the squared lenth of a vector.
-     * @param {Vector3} a 
-     * @returns {number}
-     */
-    static lengthSquared(a) {
-        return a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
-    }
-
-    /**
      * Calculate the squared distance between two points.
      * @param {Vector3} a 
      * @param {Vector3} b 
@@ -499,7 +441,7 @@ export class Vector3 extends Float32Array {
      */
     static normalize(a, out) {
         out = out || new Vector3();
-        const l = Vector3.length(a);
+        const l = a.getLength();
         if (!l) {
             out.set(a);
             return out;
