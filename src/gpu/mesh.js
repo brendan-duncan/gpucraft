@@ -3,6 +3,7 @@ export class Mesh {
     constructor(device, attributes) {
         this.device = device;
         this.buffers = {};
+        this.id = Mesh._nextId++;
 
         for (const a in attributes) {
             const attr = attributes[a];
@@ -10,7 +11,8 @@ export class Mesh {
             const buffer = device.createBuffer({
                 size: data.byteLength,
                 usage: a === "triangles" ? GPUBufferUsage.INDEX : GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
+                mappedAtCreation: true,
+                label: a === "triangles" ? `Chunk ${this.id} index` : `Chunk ${this.id} ${a}`
             });
 
             if (a === "triangles") {
@@ -32,3 +34,6 @@ export class Mesh {
         }
     }
 }
+
+Mesh._nextId = 0;
+

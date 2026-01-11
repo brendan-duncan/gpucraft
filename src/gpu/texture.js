@@ -11,12 +11,14 @@ export class Texture {
         }
     }
 
-    static renderBuffer(device, width, height, format) {
+    static renderBuffer(device, width, height, format, label) {
         return new Texture(device, {
             width: width,
             height: height,
             format: format ?? "rgba8unorm",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT });
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            label
+        });
     }
 
     configure(options) {
@@ -49,11 +51,13 @@ export class Texture {
         const height = options.height;
         const format = options.format ?? "rgba8unorm";
         const usage = options.usage ?? GPUTextureUsage.TEXTURE_BINDING;
+        const label = options.label ?? "Txt"
 
         this.gpu = this.device.createTexture({
             size: [width, height],
             format: format,
-            usage: usage
+            usage: usage,
+            label: label
         });
 
         this.state = 1;
@@ -72,12 +76,13 @@ export class Texture {
         const imageBitmap = await createImageBitmap(img);
 
         if (this._generateMipmap) {
-            this.gpu = TextureUtil.get(this.device).generateMipmap(imageBitmap);
+            this.gpu = TextureUtil.get(this.device).generateMipmap(imageBitmap, url);
         } else {
             this.gpu = device.createTexture({
                 size: [ imageBitmap.width, imageBitmap.height ],
                 format: "rgba8unorm",
-                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+                label: url
             });
 
             device.queue.copyExternalImageToTexture(

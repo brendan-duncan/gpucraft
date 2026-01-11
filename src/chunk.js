@@ -210,7 +210,7 @@ export class Chunk extends SceneObject {
             x + w, 1 - y,
             x + w, 1 - (y + w));
     }
-    
+
     createMesh(device) {
         if (this.mesh) {
             if (!this.mesh.dirty) {

@@ -1,28 +1,28 @@
 /* eslint-disable no-undef */
-import { CubeMesh } from "./gpu/cube_mesh.js";
-import { Texture } from "./gpu/texture.js";
-import { Sampler } from "./gpu/sampler.js";
-import { Matrix4 } from "./math/matrix4.js";
-import { Vector3 } from "./math/vector3.js";
+import { CubeMesh } from "../gpu/cube_mesh.js";
+import { Texture } from "../gpu/texture.js";
+import { Matrix4 } from "../math/matrix4.js";
+import { Vector3 } from "../math/vector3.js";
 
-export class Skybox {
-  constructor(device, format) {
-    this.device = device;
-    this.format = format;
-    this.initialized = false;
+export class SkyboxPass {
+  constructor(engine, previousPass) {
+    this.engine = engine;
+    this.device = engine.device;
+    this.previousPass = previousPass;
+    this.format = "rgba8unorm";
     this.transform = new Matrix4();
     this.cameraPosition = new Vector3();
-
+    this.initialized = false;
+    
     this.initialize();
   }
 
   async initialize() {
     const device = this.device;
-    this.sampler = new Sampler(device, {
-      minFilter: "linear",
-      magFilter: "linear",
-    });
-    this.texture = new Texture(device, { mipmap: true });
+
+    this.sampler = this.engine.textureUtil.linearSampler;
+
+    this.texture = new Texture(device, { mipmap: false });
     await this.texture.loadUrl("resources/sky2.jpg");
 
     this.cube = new CubeMesh(device);
@@ -54,7 +54,7 @@ export class Skybox {
       bindGroupLayouts: [this.bindGroupLayout],
     });
 
-    this.shaderModule = device.createShaderModule({ code: skyShader });
+    this.shaderModule = device.createShaderModule({ code: skyShader, label: "Skybox Shader Module" });
 
     this.pipeline = device.createRenderPipeline({
       layout: this.pipelineLayout,
@@ -91,14 +91,16 @@ export class Skybox {
       depthStencil: {
         depthWriteEnabled: false,
         depthCompare: "less",
-        format: "depth24plus-stencil8",
+        format: "depth24plus",
       },
+      label: "Skybox Pipeline"
     });
 
     const uniformBufferSize = 4 * 16; // 4x4 matrix
     this.uniformBuffer = device.createBuffer({
       size: uniformBufferSize,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      label: "Skybox Uniform"
     });
 
     this.uniformBindGroup = device.createBindGroup({
@@ -110,7 +112,7 @@ export class Skybox {
         },
         {
           binding: 1,
-          resource: this.sampler.gpu,
+          resource: this.sampler,
         },
         {
           binding: 2,
@@ -122,13 +124,33 @@ export class Skybox {
     this.initialized = true;
   }
 
-  draw(camera, passEncoder) {
+  resize(width, height) {
+    // Resize skybox resources if needed
+  }
+
+  render(commandEncoder) {
     if (!this.initialized) {
       return;
     }
 
-    const modelViewProjection = camera.modelViewProjection;
-    this.transform.setTranslate(camera.getWorldPosition(this.cameraPosition));
+    commandEncoder.pushDebugGroup("Skybox Pass");
+    const passEncoder = commandEncoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.previousPass.outputTextureView,
+          loadOp: "load",
+          storeOp: "store",
+        },
+      ],
+      depthStencilAttachment: {
+        view: this.previousPass.depthTextureView,
+        depthLoadOp: "load",
+        depthStoreOp: "store",
+      },
+    });
+
+    const modelViewProjection = this.engine.camera.modelViewProjection;
+    this.transform.setTranslate(this.engine.camera.getWorldPosition(this.cameraPosition));
     this.transform.scale(100, 100, 100);
     Matrix4.multiply(modelViewProjection, this.transform, this.transform);
 
@@ -145,7 +167,8 @@ export class Skybox {
     passEncoder.setVertexBuffer(0, this.cube.vertexBuffer);
     passEncoder.draw(36, 1, 0, 0);
 
-    return;
+    passEncoder.end();
+    commandEncoder.popDebugGroup();
   }
 }
 

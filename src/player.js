@@ -65,7 +65,7 @@ export class Player extends Transform {
         stats.style.margin = "0px";
         stats.style.borderRadius = "5px";
         stats.style.pointerEvents = "none";
-        stats.display = "block";
+        stats.style.display = "block";
         stats.style.zIndex = "100";
         document.body.appendChild(stats);
         this.lastTime = Globals.time;

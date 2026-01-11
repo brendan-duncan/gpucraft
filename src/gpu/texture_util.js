@@ -11,17 +11,18 @@ export class TextureUtil {
     constructor(device) {
         this.device = device;
 
-        this.mipmapSampler = device.createSampler({ minFilter: 'linear' });
+        this.linearSampler = device.createSampler({ minFilter: 'linear', magFilter: 'linear', mipmapFilter: 'linear', label: "Linear Sampler" });
+        this.pointSampler = device.createSampler({ minFilter: 'nearest', magFilter: 'nearest', mipmapFilter: 'nearest', label: "Point Sampler" });
 
-        const shaderModule = device.createShaderModule({ code: mipmapShader });
+        this.shaderModule = device.createShaderModule({ code: blitShader, label: "Mipmap Generation Shader Module" });
 
         this.mipmapPipeline = device.createRenderPipeline({
             vertex: {
-                module: shaderModule,
+                module: this.shaderModule,
                 entryPoint: 'vertexMain'
             },
             fragment: {
-                module: shaderModule,
+                module: this.shaderModule,
                 entryPoint: 'fragmentMain',
                 targets: [ { format: 'rgba8unorm' } ]
             },
@@ -29,7 +30,8 @@ export class TextureUtil {
                 topology: 'triangle-strip',
                 stripIndexFormat: 'uint32'
             },
-            layout: "auto"
+            layout: "auto",
+            label: "Mipmap Generation Pipeline"
         });
     }
 
@@ -37,7 +39,7 @@ export class TextureUtil {
         return Math.floor(Math.log2(Math.max(w, h))) + 1;
     }
 
-    generateMipmap(imageBitmap) {
+    generateMipmap(imageBitmap, label) {
         const mipLevelCount = TextureUtil.getNumMipmapLevels(imageBitmap.width, imageBitmap.height);
 
         const textureSize = {
@@ -49,11 +51,12 @@ export class TextureUtil {
             size: textureSize,
             format: "rgba8unorm",
             usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
-            mipLevelCount: mipLevelCount
+            mipLevelCount: mipLevelCount,
+            label
         });
 
         this.device.queue.copyExternalImageToTexture({ source: imageBitmap }, { texture }, textureSize);
-    
+
         const commandEncoder = this.device.createCommandEncoder({});
 
         const bindGroupLayout = this.mipmapPipeline.getBindGroupLayout(0);
@@ -64,7 +67,7 @@ export class TextureUtil {
                 entries: [
                     {
                         binding: 0,
-                        resource: this.mipmapSampler,
+                        resource: this.linearSampler,
                     },
                     {
                         binding: 1,
@@ -104,7 +107,7 @@ export class TextureUtil {
 
 TextureUtil._devices = new Map();
 
-const mipmapShader = `
+const blitShader = `
 var<private> posTex: array<vec4<f32>, 3> = array<vec4<f32>, 3>(
     vec4<f32>(-1.0, 1.0, 0.0, 0.0),
     vec4<f32>(3.0, 1.0, 2.0, 0.0),
