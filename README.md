@@ -1,8 +1,8 @@
 # gpucraft
 
-Simple WebGPU minecraft clone.
+Experiment WebGPU voxel renderer for a minecraft style game.
+
+Try it here: https://brendan-duncan.github.io/gpucraft
+
 ![GPUCraft Screenshot](gpucraft.png)
 
-## Try It Out
-
-https://brendan-duncan.github.io/gpucraft
