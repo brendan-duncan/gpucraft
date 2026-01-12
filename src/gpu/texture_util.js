@@ -11,8 +11,11 @@ export class TextureUtil {
     constructor(device) {
         this.device = device;
 
-        this.linearSampler = device.createSampler({ minFilter: 'linear', magFilter: 'linear', mipmapFilter: 'linear', label: "Linear Sampler" });
-        this.pointSampler = device.createSampler({ minFilter: 'nearest', magFilter: 'nearest', mipmapFilter: 'nearest', label: "Point Sampler" });
+        this.linearSampler = device.createSampler({ minFilter: 'linear', magFilter: 'linear', mipmapFilter: 'linear', label: "Linear Sampler",
+                addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat'});
+
+        this.pointSampler = device.createSampler({ minFilter: 'nearest', magFilter: 'nearest', mipmapFilter: 'nearest', label: "Point Sampler",
+            addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat' });
 
         this.shaderModule = device.createShaderModule({ code: blitShader, label: "Mipmap Generation Shader Module" });
 

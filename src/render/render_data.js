@@ -9,8 +9,6 @@ export class RenderData {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "View Uniform"
         });
-
-        this._inverseViewProjection = new Matrix4();
     }
 
     getModelBuffer(index) {
@@ -54,7 +52,7 @@ export class RenderData {
 
     updateViewUniforms(camera) {
         const modelViewProjection = camera.modelViewProjection;
-        modelViewProjection.invert(this._inverseViewProjection);
+        const worldToView = camera.worldToView;
 
         this.device.queue.writeBuffer(
             this._viewUniformBuffer,
@@ -67,9 +65,9 @@ export class RenderData {
         this.device.queue.writeBuffer(
             this._viewUniformBuffer,
             64,
-            this._inverseViewProjection.buffer,
-            this._inverseViewProjection.byteOffset,
-            this._inverseViewProjection.byteLength
+            worldToView.buffer,
+            worldToView.byteOffset,
+            worldToView.byteLength
         );
     }
 }

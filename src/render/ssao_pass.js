@@ -11,7 +11,7 @@ export class SSAOPass {
             this.device,
             this.canvas.width,
             this.canvas.height,
-            "r32float",
+            "r8unorm",
             "SSAO Texture"
         );
         this.ssaoTextureView = this.ssaoTexture.createView();
@@ -28,7 +28,7 @@ export class SSAOPass {
             fragment: {
                 module: this.ssaoModule,
                 entryPoint: 'fragmentMain',
-                targets: [ { format: "r32float" } ]
+                targets: [ { format: "r8unorm" } ]
             },
             primitive: {
                 topology: 'triangle-list',
@@ -37,26 +37,11 @@ export class SSAOPass {
 
         this.sampler = engine.textureUtil.pointSampler;
 
-        this.ssaoBindGroup = this.device.createBindGroup({
-            layout: this.ssaoPipeline.getBindGroupLayout(0),
-            label: "SSAO Bind Group",
-            entries: [
-                { binding: 0, resource: this.sampler },
-                { binding: 1, resource: this.forwardPass.positionTextureView },
-                { binding: 2, resource: this.forwardPass.normalTextureView },
-            ],
-        });
+        this.ssaoBindGroup = null;
 
-        this.outputTexture = Texture.renderBuffer(
-            this.device,
-            this.canvas.width,
-            this.canvas.height,
-            "rgba8unorm",
-            "SSAO Output"
-        );
-        this.outputTextureView = this.outputTexture.createView();
-
-        this.depthTextureView = this.forwardPass.depthTextureView;
+        this.outputTexture = null;
+        this.outputTextureView = null;
+        this.depthTextureView = null;
 
         this.ssaoOutputModule = this.device.createShaderModule({ code: outputShader, label: "SSAO Output Shader Module" });
 
@@ -77,24 +62,18 @@ export class SSAOPass {
             }
         });
 
-        this.ssaoOutputBindGroup = this.device.createBindGroup({
-            layout: this.ssaoOutputPipeline.getBindGroupLayout(0),
-            label: "SSAO Output Bind Group",
-            entries: [
-                { binding: 0, resource: this.sampler },
-                { binding: 1, resource: this.forwardPass.outputTextureView },
-                { binding: 2, resource: this.ssaoTextureView },
-            ],
-        });
+        this.ssaoOutputBindGroup = null;
     }
 
     resize(width, height) {
-        this.ssaoTexture.destroy();
+        this.depthTextureView = this.forwardPass.depthTextureView;
+
+        this.ssaoTexture?.destroy();
         this.ssaoTexture = Texture.renderBuffer(
             this.device,
             width,
             height,
-            "r32float",
+            "r8unorm",
             "SSAO Texture"
         );
         this.ssaoTextureView = this.ssaoTexture.createView();
@@ -106,10 +85,11 @@ export class SSAOPass {
                 { binding: 0, resource: this.sampler },
                 { binding: 1, resource: this.forwardPass.positionTextureView },
                 { binding: 2, resource: this.forwardPass.normalTextureView },
+                { binding: 3, resource: this.depthTextureView }
             ],
         });
 
-        this.outputTexture.destroy();
+        this.outputTexture?.destroy();
         this.outputTexture = Texture.renderBuffer(
             this.device,
             width,
@@ -128,8 +108,6 @@ export class SSAOPass {
                 { binding: 2, resource: this.ssaoTextureView },
             ],
         });
-
-        this.depthTextureView = this.forwardPass.depthTextureView;
     }
 
     render(commandEncoder) {
@@ -194,8 +172,11 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 @group(0) @binding(0) var imgSampler: sampler;
 @group(0) @binding(1) var worldPosTex: texture_2d<f32>;
 @group(0) @binding(2) var normalTex: texture_2d<f32>;
+@group(0) @binding(3) var depthTex: texture_depth_2d;
 
-fn rand(n: f32) -> f32 { return fract(sin(n) * 43758.5453123); }
+fn rand(co: vec2f) -> f32 {
+    return fract(sin(dot(co, vec2f(12.9898, 78.233))) * 43758.5453);
+}
 
 struct SSAOParams {
     intensity: f32,
@@ -208,50 +189,96 @@ struct SSAOParams {
 fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
     let params = SSAOParams(1.0, 0.1, 0.025, 0.0);
 
-    var position = textureSampleLevel(worldPosTex, imgSampler, input.v_uv, 0.0).xyz;
-    var normal = textureSampleLevel(normalTex, imgSampler, input.v_uv, 0.0).xyz;
-    let normalLen = length(normal);
+    let texSize = textureDimensions(depthTex, 0);
+    let fragCoord = input.v_uv * vec2f(texSize);
 
-    if (normalLen < 0.1) {
+    var worldPosition = textureSampleLevel(worldPosTex, imgSampler, input.v_uv, 0.0).xyz;
+    let depth = textureLoad(depthTex, vec2<i32>(fragCoord), 0);
+    let normalData = textureSampleLevel(normalTex, imgSampler, input.v_uv, 0);
+    var normal = normalize(normalData.xyz * 2.0 - 1.0);
+
+    if (depth >= 1.0) {
       return 0.0;
     }
-
-    normal = normalize(normal);
 
     let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
     let diffuse = max(0.0, dot(normal, lightDir)) * 0.6 + 0.4;
 
+    let radius = 3.0;
+    let numSamples = 16;
     var occlusion = 0.0;
+
+    for (var i = 0; i < numSamples; i = i + 1) {
+        let angle = f32(i) / f32(numSamples) * 6.28318;
+        let sampleOffset = vec2<f32>(cos(angle), sin(angle)) * radius;
+        let samplePos = vec2<i32>(fragCoord.xy) + vec2<i32>(sampleOffset);
+
+        if (samplePos.x >= 0 && samplePos.x < i32(texSize.x) &&
+            samplePos.y >= 0 && samplePos.y < i32(texSize.y)) {
+            let sampleDepth = textureLoad(depthTex, samplePos, 0);
+
+            if (sampleDepth > depth) {
+                let diff = sampleDepth - depth;
+                let weight = smoothstep(0.0, 0.01, diff) * (1.0 - smoothstep(0.01, 0.05, diff));
+                occlusion = occlusion + weight;
+            }
+        }
+    }
+
+    occlusion = occlusion / f32(numSamples);
+
+    let intensity = 1.2;
+    let ao = 1.0 - occlusion * intensity;
+
+    /*var occlusion = 0.0;
     let samples = 16;
 
+    let randseed = rand(input.v_uv);
+    let theta = randseed * 6.28318;
+    let phi = acos(randseed * 2.0 - 1.0);
+    let randomVector = normalize(vec3f(
+        sin(phi) * cos(theta),
+        sin(phi) * sin(theta),
+        cos(phi)
+    ));
+
+    let tangent = normalize(cross(normal, randomVector));
+    let bitangent = cross(normal, tangent);
+    let TBN = mat3x3f(tangent, bitangent, normal);
+
     for (var i = 0; i < samples; i++) {
-        let angle = f32(i) * 6.28318 / f32(samples);
-        let spiralRadius = (f32(i + 1) / f32(samples)) * params.radius;
-        let offset = vec2<f32>(cos(angle), sin(angle)) * spiralRadius * 0.05;
+        var sampleDir = normalize(vec3<f32>(
+            rand(input.v_uv + f32(i) * 0.1234) * 2.0 - 1.0,
+            rand(input.v_uv + f32(i) * 0.5678) * 2.0 - 1.0,
+            rand(input.v_uv + f32(i) * 0.9876)));
 
-        let sampleUV = input.v_uv + offset;
-        if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) {
-            continue;
-        }
+        sampleDir = TBN * sampleDir;
+        sampleDir.y = abs(sampleDir.y); // hemisphere
 
-        let samplePos = textureSampleLevel(worldPosTex, imgSampler, sampleUV, 0.0).xyz;
-        let diff = samplePos - position;
+        var samplePos = worldPosition + sampleDir * (params.radius + params.bias);
+
+        let offset = viewUniforms.viewProjection * vec4f(samplePos, 1.0);
+        let offsetProj = offset.xyz / offset.w;
+        let offsetUv = offsetProj.xy * 0.5 + vec2<f32>(0.5, 0.5);
+
+        let sampleWorldPos = textureSampleLevel(worldPosTex, imgSampler, offsetUv, 0.0).xyz;
+        let diff = sampleWorldPos - worldPosition;
         let dist = length(diff);
 
         if (dist > 0.001) {
             let diffNorm = normalize(diff);
             let weight = max(0.0, dot(normal, diffNorm) - 0.1);
-            let rangeCheck = 1.0 - smoothstep(params.radius * 0.5, params.radius, dist);
+            let rangeCheck = 1.0 - smoothstep(0.0, params.radius, dist);
             occlusion += weight * rangeCheck;
         }
     }
 
     occlusion = occlusion / f32(samples) * params.intensity;
-    let ao = 1.0 - clamp(occlusion, 0.0, 1.0);
+    let ao = 1.0 - clamp(occlusion, 0.0, 1.0);*/
 
-    //return ao * diffuse;
+    return ao * diffuse;
     //return ao;
-    return diffuse;
+    //return diffuse;
 
 }`;
 
@@ -285,4 +312,5 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4<f32>(color.rgb * ao, color.a);
     //return color;
+    //return vec4<f32>(ao, ao, ao, 1.0);
 }`;

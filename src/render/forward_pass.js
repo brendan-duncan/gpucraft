@@ -13,41 +13,17 @@ export class ForwardPass {
 
         this.sampler = engine.textureUtil.pointSampler;
 
-        this.outputTexture = Texture.renderBuffer(
-            this.device,
-            this.canvas.width,
-            this.canvas.height,
-            "rgba8unorm",
-            "Output Color Texture"
-        );
-        this.outputTextureView = this.outputTexture.createView();
+        this.outputTexture = null;
+        this.outputTextureView = null;
 
-        this.normalTexture = Texture.renderBuffer(
-            this.device,
-            this.canvas.width,
-            this.canvas.height,
-            "rgba16float",
-            "GBuffer Normal"
-        );
-        this.normalTextureView = this.normalTexture.createView();
+        this.normalTexture = null;
+        this.normalTextureView = null;
 
-        this.positionTexture = Texture.renderBuffer(
-            this.device,
-            this.canvas.width,
-            this.canvas.height,
-            "rgba16float",
-            "GBuffer Position"
-        );
-        this.positionTextureView = this.positionTexture.createView();
+        this.positionTexture = null;
+        this.positionTextureView = null;
 
-        this.depthTexture = Texture.renderBuffer(
-            this.device,
-            this.canvas.width,
-            this.canvas.height,
-            "depth24plus",
-            "GBuffer Depth"
-        );
-        this.depthTextureView = this.depthTexture.createView({aspect: "depth-only"});
+        this.depthTexture = null;
+        this.depthTextureView = null;
 
         this.texture = new Texture(this.device, { mipmap: true });
 
@@ -173,7 +149,7 @@ export class ForwardPass {
     }
 
     resize(width, height) {
-        this.outputTexture.destroy();
+        this.outputTexture?.destroy();
         this.outputTexture = Texture.renderBuffer(
             this.device,
             width,
@@ -183,7 +159,7 @@ export class ForwardPass {
         );
         this.outputTextureView = this.outputTexture.createView();
 
-        this.positionTexture.destroy();
+        this.positionTexture?.destroy();
         this.positionTexture = Texture.renderBuffer(
             this.device,
             width,
@@ -193,7 +169,7 @@ export class ForwardPass {
         );
         this.positionTextureView = this.positionTexture.createView();
 
-        this.normalTexture.destroy();
+        this.normalTexture?.destroy();
         this.normalTexture = Texture.renderBuffer(
             this.device,
             width,
@@ -203,7 +179,7 @@ export class ForwardPass {
         );
         this.normalTextureView = this.normalTexture.createView();
 
-        this.depthTexture.destroy();
+        this.depthTexture?.destroy();
         this.depthTexture = Texture.renderBuffer(
             this.device,
             width,
@@ -280,40 +256,44 @@ export class ForwardPass {
 
 const shaderSource = `
 struct ViewUniforms {
-    viewProjection: mat4x4<f32>
+    viewProjection: mat4x4f,
+    view: mat4x4f
 };
 
 struct ModelUniforms {
-    model: mat4x4<f32>
+    model: mat4x4f
 };
 
 @binding(0) @group(0) var<uniform> viewUniforms: ViewUniforms;
 @binding(1) @group(0) var<uniform> modelUniforms: ModelUniforms;
 
 struct VertexInput {
-    @location(0) a_position: vec3<f32>,
-    @location(1) a_normal: vec3<f32>,
-    @location(2) a_color: vec4<f32>,
-    @location(3) a_uv: vec2<f32>
+    @location(0) a_position: vec3f,
+    @location(1) a_normal: vec3f,
+    @location(2) a_color: vec4f,
+    @location(3) a_uv: vec2f
 };
 
 struct VertexOutput {
-    @builtin(position) Position: vec4<f32>,
-    @location(0) v_position: vec4<f32>,
-    @location(1) v_normal: vec3<f32>,
-    @location(2) v_color: vec4<f32>,
-    @location(3) v_uv: vec2<f32>
+    @builtin(position) Position: vec4f,
+    @location(0) v_position: vec4f,
+    @location(1) v_normal: vec3f,
+    @location(2) v_color: vec4f,
+    @location(3) v_uv: vec2f,
+    @location(4) v_view: vec4f
 };
 
 @vertex
 fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
-    var worldPosition = modelUniforms.model * vec4<f32>(input.a_position, 1.0);
+    let worldPosition = modelUniforms.model * vec4f(input.a_position, 1.0);
+    var viewPosition = viewUniforms.view * worldPosition;
     output.Position = viewUniforms.viewProjection * worldPosition;
     output.v_position = worldPosition;
-    output.v_normal = input.a_normal; // the transform doesn't use rotations, so the model normal is fine
+    output.v_normal = normalize(input.a_normal.xyz);
     output.v_color = input.a_color;
     output.v_uv = input.a_uv;
+    output.v_view = viewPosition;
     return output;
 }
 
@@ -321,9 +301,9 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 @binding(3) @group(0) var u_texture: texture_2d<f32>;
 
 struct FragmentOutput {
-    @location(0) color: vec4<f32>,
-    @location(1) position: vec4<f32>,
-    @location(2) normal: vec4<f32>
+    @location(0) color: vec4f,
+    @location(1) position: vec4f,
+    @location(2) normal: vec4f
 };
 
 @fragment
@@ -337,12 +317,13 @@ fn fragmentMain(input: VertexOutput) -> FragmentOutput {
 
     shade = clamp(shade, minGlobalLightLevel, maxGlobalLightLevel);
 
-    var light: vec4<f32> = vec4<f32>(shade, shade, shade, 1.0);
+    var light: vec4f = vec4f(shade, shade, shade, 1.0);
+
+    var color: vec4f = textureSample(u_texture, u_sampler, input.v_uv);
 
     var output: FragmentOutput;
-    output.color = textureSample(u_texture, u_sampler, input.v_uv) * light;
+    output.color = color * light;
     output.position = input.v_position;
-    output.normal = vec4<f32>(input.v_normal, 1.0);
-
+    output.normal = vec4f(normalize(input.v_normal) * 0.5 + 0.5, input.v_view.z);
     return output;
 }`;

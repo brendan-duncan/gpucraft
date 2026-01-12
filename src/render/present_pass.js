@@ -30,14 +30,7 @@ export class PresentPass {
 
         this.previousPass = previousPass;
 
-        this.outputBindGroup = this.device.createBindGroup({
-            layout: this.outputPipeline.getBindGroupLayout(0),
-            label: "Output Bind Group",
-            entries: [
-                { binding: 0, resource: this.pointSampler },
-                { binding: 1, resource: this.previousPass.outputTextureView },
-            ],
-        });
+        this.outputBindGroup = null;
     }
 
     resize(width, height) {
