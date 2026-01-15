@@ -175,7 +175,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 @group(0) @binding(3) var depthTex: texture_depth_2d;
 
 fn rand(co: vec2f) -> f32 {
-    return fract(sin(dot(co, vec2f(12.9898, 78.233))) * 43758.5453);
+    return abs(fract(sin(dot(co, vec2f(12.9898, 78.233))) * 43758.5453));
 }
 
 struct SSAOParams {
@@ -185,15 +185,21 @@ struct SSAOParams {
     padding: f32
 };
 
+fn linearEyeDepth(depth: f32) -> f32 {
+    let zNear = 0.1;
+    let zFar = 1000.0;
+    return (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
-    let params = SSAOParams(1.0, 0.1, 0.025, 0.0);
+    let params = SSAOParams(1.0, 0.2, 0.025, 0.0);
 
     let texSize = textureDimensions(depthTex, 0);
     let fragCoord = input.v_uv * vec2f(texSize);
 
     var worldPosition = textureSampleLevel(worldPosTex, imgSampler, input.v_uv, 0.0).xyz;
-    let depth = textureLoad(depthTex, vec2<i32>(fragCoord), 0);
+    let depth = linearEyeDepth(textureLoad(depthTex, vec2<i32>(fragCoord), 0));
     let normalData = textureSampleLevel(normalTex, imgSampler, input.v_uv, 0);
     var normal = normalize(normalData.xyz * 2.0 - 1.0);
 
@@ -215,11 +221,14 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
 
         if (samplePos.x >= 0 && samplePos.x < i32(texSize.x) &&
             samplePos.y >= 0 && samplePos.y < i32(texSize.y)) {
-            let sampleDepth = textureLoad(depthTex, samplePos, 0);
+            let sampleDepth = linearEyeDepth(textureLoad(depthTex, samplePos, 0));
 
             if (sampleDepth > depth) {
                 let diff = sampleDepth - depth;
-                let weight = smoothstep(0.0, 0.01, diff) * (1.0 - smoothstep(0.01, 0.05, diff));
+                let falloff = 0.01;
+                let area = 0.05;
+                let weight = smoothstep(0.0, 0.001, diff) * (1.0 - smoothstep(falloff, area, diff));
+                //let weight = step(falloff, diff) * (1.0 - smoothstep(falloff, area, diff));
                 occlusion = occlusion + weight;
             }
         }
@@ -229,52 +238,6 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
 
     let intensity = 1.2;
     let ao = 1.0 - occlusion * intensity;
-
-    /*var occlusion = 0.0;
-    let samples = 16;
-
-    let randseed = rand(input.v_uv);
-    let theta = randseed * 6.28318;
-    let phi = acos(randseed * 2.0 - 1.0);
-    let randomVector = normalize(vec3f(
-        sin(phi) * cos(theta),
-        sin(phi) * sin(theta),
-        cos(phi)
-    ));
-
-    let tangent = normalize(cross(normal, randomVector));
-    let bitangent = cross(normal, tangent);
-    let TBN = mat3x3f(tangent, bitangent, normal);
-
-    for (var i = 0; i < samples; i++) {
-        var sampleDir = normalize(vec3<f32>(
-            rand(input.v_uv + f32(i) * 0.1234) * 2.0 - 1.0,
-            rand(input.v_uv + f32(i) * 0.5678) * 2.0 - 1.0,
-            rand(input.v_uv + f32(i) * 0.9876)));
-
-        sampleDir = TBN * sampleDir;
-        sampleDir.y = abs(sampleDir.y); // hemisphere
-
-        var samplePos = worldPosition + sampleDir * (params.radius + params.bias);
-
-        let offset = viewUniforms.viewProjection * vec4f(samplePos, 1.0);
-        let offsetProj = offset.xyz / offset.w;
-        let offsetUv = offsetProj.xy * 0.5 + vec2<f32>(0.5, 0.5);
-
-        let sampleWorldPos = textureSampleLevel(worldPosTex, imgSampler, offsetUv, 0.0).xyz;
-        let diff = sampleWorldPos - worldPosition;
-        let dist = length(diff);
-
-        if (dist > 0.001) {
-            let diffNorm = normalize(diff);
-            let weight = max(0.0, dot(normal, diffNorm) - 0.1);
-            let rangeCheck = 1.0 - smoothstep(0.0, params.radius, dist);
-            occlusion += weight * rangeCheck;
-        }
-    }
-
-    occlusion = occlusion / f32(samples) * params.intensity;
-    let ao = 1.0 - clamp(occlusion, 0.0, 1.0);*/
 
     return ao * diffuse;
     //return ao;

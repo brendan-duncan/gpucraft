@@ -48,7 +48,7 @@ export class Camera extends Transform {
 
     get projection() {
         if (this._projectionDirty) {
-            this._projection.setPerspective(this.fov * DegreeToRadian, this.aspect, 0.3, 1000);
+            this._projection.setPerspective(this.fov * DegreeToRadian, this.aspect, 0.1, 1000);
             this._projectionDirty = false;
         }
         return this._projection;
