@@ -8,7 +8,7 @@ export class Renderer {
         this.engine = engine;
         this.device = engine.device;
 
-        this.forwardPass = new ForwardPass(engine, this.renderData);
+        this.forwardPass = new ForwardPass(engine);
         this.ssaoPass = new SSAOPass(engine, this.forwardPass);
         this.skyboxPass = new SkyboxPass(engine, this.ssaoPass);
         this.presentPass = new PresentPass(engine, this.ssaoPass);

@@ -2,14 +2,13 @@ import { Texture } from "../gpu/texture.js";
 import { RenderData } from "./render_data.js";
 
 export class ForwardPass {
-    constructor(engine, renderData) {
+    constructor(engine) {
         this.engine = engine;
         this.device = engine.device;
         this.canvas = engine.canvas;
-        this.renderData = renderData;
         this.camera = engine.camera;
 
-        this.renderData = new RenderData(this.device);
+        this.renderData = new RenderData(this.device, this.canvas);
 
         this.sampler = engine.textureUtil.pointSampler;
 
@@ -257,7 +256,8 @@ export class ForwardPass {
 const shaderSource = `
 struct ViewUniforms {
     viewProjection: mat4x4f,
-    view: mat4x4f
+    view: mat4x4f,
+    jitter: vec4f
 };
 
 struct ModelUniforms {
@@ -289,7 +289,11 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     let worldPosition = modelUniforms.model * vec4f(input.a_position, 1.0);
     var viewPosition = viewUniforms.view * worldPosition;
+    
     output.Position = viewUniforms.viewProjection * worldPosition;
+    output.Position.x = output.Position.x + viewUniforms.jitter.x * output.Position.w;
+    output.Position.y = output.Position.y + viewUniforms.jitter.y * output.Position.w;
+
     output.v_position = worldPosition;
     output.v_normal = normalize(viewUniforms.view * vec4f(input.a_normal, 0.0)).xyz;
     output.v_color = input.a_color;

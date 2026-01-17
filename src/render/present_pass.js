@@ -1,12 +1,13 @@
 export class PresentPass {
     constructor(engine, previousPass) {
         this.engine = engine;
+        this.canvas = engine.canvas;
         this.device = engine.device;
         this.queue = engine.device.queue;
 
         this.preferredFormat = navigator.gpu.getPreferredCanvasFormat();
 
-        this.outputModule = this.device.createShaderModule({ code: outputShader, label: "Present Pass Shader Module" });
+        this.outputModule = this.device.createShaderModule({ code: taaShader, label: "Present Pass Shader Module" });
 
         this.outputPipeline = this.device.createRenderPipeline({
             layout: "auto",
@@ -31,15 +32,27 @@ export class PresentPass {
         this.previousPass = previousPass;
 
         this.outputBindGroup = null;
+        this.previousTexture = null;
+        this.previousTextureView = null;
     }
 
     resize(width, height) {
+        this.previousTexture?.destroy();
+        this.previousTexture = this.device.createTexture({
+            size: { width, height },
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            label: "Previous Frame Texture"
+        });
+        this.previousTextureView = this.previousTexture.createView();
+
         this.outputBindGroup = this.device.createBindGroup({
             layout: this.outputPipeline.getBindGroupLayout(0),
             label: "Output Bind Group",
             entries: [
                 { binding: 0, resource: this.pointSampler },
-                { binding: 1, resource: this.previousPass.outputTextureView }
+                { binding: 1, resource: this.previousPass.outputTextureView },
+                { binding: 2, resource: this.previousTextureView },
             ],
         });
     }
@@ -59,10 +72,16 @@ export class PresentPass {
         passEncoder.draw(3, 1, 0, 0);
         passEncoder.end();
         commandEncoder.popDebugGroup();
+
+        commandEncoder.copyTextureToTexture(
+            { texture: this.previousPass.outputTexture.gpu },
+            { texture: this.previousTexture },
+            [this.canvas.width, this.canvas.height]
+        );
     }
 }
 
-const outputShader = `
+const taaShader = `
 var<private> posTex: array<vec4<f32>, 3> = array<vec4<f32>, 3>(
     vec4<f32>(-1.0, 1.0, 0.0, 0.0),
     vec4<f32>(3.0, 1.0, 2.0, 0.0),
@@ -83,8 +102,11 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @group(0) @binding(0) var imgSampler: sampler;
 @group(0) @binding(1) var img: texture_2d<f32>;
+@group(0) @binding(2) var prevImg: texture_2d<f32>;
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSampleLevel(img, imgSampler, input.v_uv, 0.0);
+    let current = textureSampleLevel(img, imgSampler, input.v_uv, 0.0);
+    let previous = textureSampleLevel(prevImg, imgSampler, input.v_uv, 0.0);
+    return mix(current, previous, 0.75);
 }`;
