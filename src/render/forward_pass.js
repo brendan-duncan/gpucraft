@@ -280,7 +280,8 @@ struct VertexOutput {
     @location(1) v_normal: vec3f,
     @location(2) v_color: vec4f,
     @location(3) v_uv: vec2f,
-    @location(4) v_view: vec4f
+    @location(4) v_view: vec4f,
+    @location(5) v_worldNormal: vec3f
 };
 
 @vertex
@@ -290,10 +291,11 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     var viewPosition = viewUniforms.view * worldPosition;
     output.Position = viewUniforms.viewProjection * worldPosition;
     output.v_position = worldPosition;
-    output.v_normal = normalize(input.a_normal.xyz);
+    output.v_normal = normalize(viewUniforms.view * vec4f(input.a_normal, 0.0)).xyz;
     output.v_color = input.a_color;
     output.v_uv = input.a_uv;
     output.v_view = viewPosition;
+    output.v_worldNormal = normalize((modelUniforms.model * vec4f(input.a_normal, 0.0)).xyz);
     return output;
 }
 
@@ -321,9 +323,14 @@ fn fragmentMain(input: VertexOutput) -> FragmentOutput {
 
     var color: vec4f = textureSample(u_texture, u_sampler, input.v_uv);
 
+    let normal: vec3f = input.v_worldNormal;
+    let lightDir: vec3f = normalize(vec3f(1.0, 1.0, 1.0));
+    let diffuseFactor: f32 = max(dot(normal, lightDir), 0.0) * 0.6 + 0.4;
+    light = vec4f(light.rgb * diffuseFactor, light.a);
+
     var output: FragmentOutput;
     output.color = color * light;
-    output.position = input.v_position;
+    output.position = input.v_view;
     output.normal = vec4f(normalize(input.v_normal) * 0.5 + 0.5, input.v_view.z);
     return output;
 }`;
