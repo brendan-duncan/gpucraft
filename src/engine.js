@@ -5,6 +5,7 @@ import { Player } from "./player.js";
 import { World } from "./world.js";
 import { Renderer } from "./render/renderer.js";
 import { TextureUtil } from "./gpu/texture_util.js";
+import { SpotLight } from "./light.js";
 
 export class Engine {
   constructor() {
@@ -37,6 +38,9 @@ export class Engine {
     this.camera = new Camera();
     this.player = new Player(this.camera);
     this.world = new World();
+
+    this.spotlight = new SpotLight(this.camera);
+    this.spotlight.setPosition(-0.5, -0.5, 0.0);
 
     this.world.start();
 

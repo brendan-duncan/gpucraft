@@ -9,6 +9,8 @@ export class Camera extends Transform {
         Globals.camera = this;
         this._aspect = 1.0;
         this._fov = 60.0;
+        this._near = 0.01;
+        this._far = 1000.0;
 
         this.setPosition(0, 1.8, 0);
 
@@ -32,12 +34,28 @@ export class Camera extends Transform {
     get aspect() { return this._aspect; }
 
     set aspect(v) {
-        if (this._aspect == v) return;
+        if (this._aspect === v) return;
         this._aspect = v;
         this.projectionDirty = true;
     }
 
-    get projectionDiry() { return this._projectionDirty; }
+    get near() { return this._near; }
+
+    set near(v) {
+        if (this._near === v) return;
+        this._near = v;
+        this.projectionDirty = true;
+    }
+
+    get far() { return this._far; }
+
+    set far(v) {
+        if (this._far === v) return;
+        this._far = v;
+        this.projectionDirty = true;
+    }
+
+    get projectionDirty() { return this._projectionDirty; }
 
     set projectionDirty(v) {
         this._projectionDirty = v;
@@ -48,7 +66,7 @@ export class Camera extends Transform {
 
     get projection() {
         if (this._projectionDirty) {
-            this._projection.setPerspective(this.fov * DegreeToRadian, this.aspect, 0.1, 1000);
+            this._projection.setPerspective(this.fov * DegreeToRadian, this.aspect, this._near, this._far);
             this._projectionDirty = false;
         }
         return this._projection;

@@ -16,14 +16,16 @@ export class SSAOPass {
         );
         this.ssaoTextureView = this.ssaoTexture.createView();
 
+        let noiseWidth = 8;
+        let noiseHeight = 8;
         this.noiseTexture = this.device.createTexture({
-            size: { width: 4, height: 4 },
+            size: { width: noiseWidth, height: noiseHeight },
             format: 'rgba32float',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
         });
         this.noiseTextureView = this.noiseTexture.createView();
-        const noiseData = new Float32Array(4 * 4 * 4);
-        for (let i = 0; i < 16; i++) {
+        const noiseData = new Float32Array(4 * noiseWidth * noiseHeight);
+        for (let i = 0; i < noiseWidth * noiseHeight; i++) {
             const angle = Math.random() * Math.PI * 2;
             noiseData[i * 4] = Math.cos(angle);
             noiseData[i * 4 + 1] = Math.sin(angle);
@@ -33,8 +35,8 @@ export class SSAOPass {
         this.device.queue.writeTexture(
             { texture: this.noiseTexture },
             noiseData,
-            { bytesPerRow: 64 },
-            { width: 4, height: 4 }
+            { bytesPerRow: noiseWidth * 16 },
+            { width: noiseWidth, height: noiseHeight }
         );
 
         this.ssaoModule = this.device.createShaderModule({ code: ssaoShader, label: "SSAO Pass Shader Module" });
@@ -68,37 +70,19 @@ export class SSAOPass {
 
         this.ssaoBindGroup = null;
 
-        const blurXCode = blurShader.replace('BLUR_DIR', '1, 0');
-        const blurYCode = blurShader.replace('BLUR_DIR', '0, 1');
-        const blurXModule = this.device.createShaderModule({ code: blurXCode, label: "SSAO Blur X Shader Module" });
-        const blurYModule = this.device.createShaderModule({ code: blurYCode, label: "SSAO Blur Y Shader Module" });
+        const blurModule = this.device.createShaderModule({ code: blurShader, label: "SSAO Blur Shader Module" });
         this.blurTexture = null;
         this.blurTextureView = null;
-        this.blurXBindGroup = null;
-        this.blurYBindGroup = null;
+        this.blurBindGroup = null;
         
-        this.blurXPipeline = this.device.createRenderPipeline({
+        this.blurPipeline = this.device.createRenderPipeline({
             layout: 'auto',
             vertex: {
-                module: blurXModule,
+                module: blurModule,
                 entryPoint: 'vs_main'
             },
             fragment: {
-                module: blurXModule,
-                entryPoint: 'fs_main',
-                targets: [{ format: 'r8unorm' }]
-            },
-            primitive: { topology: 'triangle-list' }
-        });
-
-        this.blurYPipeline = this.device.createRenderPipeline({
-            layout: 'auto',
-            vertex: {
-                module: blurYModule,
-                entryPoint: 'vs_main'
-            },
-            fragment: {
-                module: blurYModule,
+                module: blurModule,
                 entryPoint: 'fs_main',
                 targets: [{ format: 'r8unorm' }]
             },
@@ -166,20 +150,11 @@ export class SSAOPass {
             "SSAO Blur Texture"
         );
         this.blurTextureView = this.blurTexture.createView();
-        this.blurXBindGroup = this.device.createBindGroup({
-            layout: this.blurXPipeline.getBindGroupLayout(0),
-            label: "SSAO Blur X Bind Group",
+        this.blurBindGroup = this.device.createBindGroup({
+            layout: this.blurPipeline.getBindGroupLayout(0),
+            label: "SSAO Blur Bind Group",
             entries: [
-                { binding: 0, resource: this.ssaoTextureView },
-                { binding: 1, resource: this.depthTextureView },
-            ],
-        });
-        this.blurYBindGroup = this.device.createBindGroup({
-            layout: this.blurYPipeline.getBindGroupLayout(0),
-            label: "SSAO Blur Y Bind Group",
-            entries: [
-                { binding: 0, resource: this.blurTextureView },
-                { binding: 1, resource: this.depthTextureView },
+                { binding: 0, resource: this.ssaoTextureView }
             ],
         });
 
@@ -199,7 +174,7 @@ export class SSAOPass {
             entries: [
                 { binding: 0, resource: this.sampler },
                 { binding: 1, resource: this.forwardPass.outputTextureView },
-                { binding: 2, resource: this.ssaoTextureView },
+                { binding: 2, resource: this.blurTextureView },
             ],
         });
     }
@@ -235,7 +210,7 @@ export class SSAOPass {
         }
         commandEncoder.popDebugGroup();
 
-        commandEncoder.pushDebugGroup("Blur X");
+        commandEncoder.pushDebugGroup("Blur");
         {
             const passEncoder = commandEncoder.beginRenderPass({
                 colorAttachments: [{
@@ -245,25 +220,8 @@ export class SSAOPass {
                     storeOp: "store",
                 }],
             });
-            passEncoder.setPipeline(this.blurXPipeline);
-            passEncoder.setBindGroup(0, this.blurXBindGroup);
-            passEncoder.draw(6, 1, 0, 0);
-            passEncoder.end();
-        }
-        commandEncoder.popDebugGroup();
-
-        commandEncoder.pushDebugGroup("Blur Y");
-        {
-            const passEncoder = commandEncoder.beginRenderPass({
-                colorAttachments: [{
-                    view: this.ssaoTextureView,
-                    loadOp: "clear",
-                    clearValue: { r: 0, g: 0, b: 0, a: 1.0 },
-                    storeOp: "store",
-                }],
-            });
-            passEncoder.setPipeline(this.blurYPipeline);
-            passEncoder.setBindGroup(0, this.blurYBindGroup);
+            passEncoder.setPipeline(this.blurPipeline);
+            passEncoder.setBindGroup(0, this.blurBindGroup);
             passEncoder.draw(6, 1, 0, 0);
             passEncoder.end();
         }
@@ -398,41 +356,45 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
 
 const blurShader = `
 @group(0) @binding(0) var aoTex: texture_2d<f32>;
-@group(0) @binding(1) var depthTex: texture_depth_2d;
+
+struct VertexOutput {
+    @builtin(position) v_position: vec4<f32>,
+    @location(0) v_uv : vec2<f32>
+};
 
 @vertex
-fn vs_main(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4f {
-    var pos = array<vec2f, 6>(
-        vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
-        vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0)
-    );
-    return vec4f(pos[idx], 0.0, 1.0);
+fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
+    const posTex = array<vec4<f32>, 3>(
+        vec4<f32>(-1.0, 1.0, 0.0, 0.0),
+        vec4<f32>(3.0, 1.0, 2.0, 0.0),
+        vec4<f32>(-1.0, -3.0, 0.0, 2.0));
+
+    var output: VertexOutput;
+    output.v_uv = posTex[idx].zw;
+    output.v_position = vec4<f32>(posTex[idx].xy, 0.0, 1.0);
+    return output;
 }
 
 @fragment
-fn fs_main(@builtin(position) pos: vec4f) -> @location(0) f32 {
+fn fs_main(input: VertexOutput) -> @location(0) f32 {
     let texSize = textureDimensions(aoTex);
-    let uv = pos.xy / vec2f(f32(texSize.x), f32(texSize.y));
-    let centerDepth = textureLoad(depthTex, vec2i(pos.xy), 0);
+    let texPos = vec2i(input.v_uv * vec2f(texSize));
 
     var result = 0.0;
     var weight = 0.0;
 
-    for (var i = -2; i <= 2; i++) {
-        let offset = vec2i(BLUR_DIR) * i;
-        let samplePos = vec2i(pos.xy) + offset;
- 
-        if (samplePos.x < 0 || samplePos.x >= i32(texSize.x) || 
-            samplePos.y < 0 || samplePos.y >= i32(texSize.y)) {
-            continue;
+    for (var x = -2; x <= 2; x = x + 1) {
+        for (var y = -2; y <= 2; y = y + 1) {
+            let samplePos = texPos + vec2i(x, y);
+    
+            if (samplePos.x < 0 || samplePos.x >= i32(texSize.x) || 
+                samplePos.y < 0 || samplePos.y >= i32(texSize.y)) {
+                continue;
+            }
+   
+            result += textureLoad(aoTex, samplePos, 0).r;
+            weight += 1.0;
         }
- 
-        let sampleDepth = textureLoad(depthTex, samplePos, 0);
-        let depthDiff = abs(centerDepth - sampleDepth);
-        let w = exp(-depthDiff * 100.0);
- 
-        result += textureLoad(aoTex, samplePos, 0).r * w;
-        weight += w;
     }
  
     return result / weight;

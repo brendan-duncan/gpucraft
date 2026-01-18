@@ -8,7 +8,7 @@ export class ForwardPass {
         this.canvas = engine.canvas;
         this.camera = engine.camera;
 
-        this.renderData = new RenderData(this.device, this.canvas);
+        this.renderData = new RenderData(this.engine);
 
         this.sampler = engine.textureUtil.pointSampler;
 
@@ -36,9 +36,10 @@ export class ForwardPass {
         this.bindGroupLayout = this.device.createBindGroupLayout({
             entries: [
                 { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
-                { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
-                { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
-                { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+                { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+                { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+                { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
             ],
             label: "Forward Pass Bind Group Layout"
         });
@@ -135,9 +136,10 @@ export class ForwardPass {
             layout: this.bindGroupLayout,
             entries: [
                 { binding: 0, resource: { buffer: this.renderData._viewUniformBuffer } },
-                { binding: 1, resource: { buffer: modelBuffer } },
-                { binding: 2, resource: this.sampler },
-                { binding: 3, resource: this.textureView },
+                { binding: 1, resource: { buffer: this.renderData._lightBuffer } },
+                { binding: 2, resource: { buffer: modelBuffer } },
+                { binding: 3, resource: this.sampler },
+                { binding: 4, resource: this.textureView },
             ],
             label: `Forward Pass Bind Group ${index}`,
         });
@@ -260,12 +262,20 @@ struct ViewUniforms {
     jitter: vec4f
 };
 
+struct LightUniforms {
+    lightViewProjection: mat4x4f,
+    lightPosition: vec4f,
+    lightDirection: vec4f,
+    lightColor: vec4f
+};
+
 struct ModelUniforms {
     model: mat4x4f
 };
 
-@binding(0) @group(0) var<uniform> viewUniforms: ViewUniforms;
-@binding(1) @group(0) var<uniform> modelUniforms: ModelUniforms;
+@group(0) @binding(0) var<uniform> viewUniforms: ViewUniforms;
+@group(0) @binding(1) var<uniform> lightUniforms: LightUniforms;
+@group(0) @binding(2) var<uniform> modelUniforms: ModelUniforms;
 
 struct VertexInput {
     @location(0) a_position: vec3f,
@@ -303,8 +313,8 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     return output;
 }
 
-@binding(2) @group(0) var u_sampler: sampler;
-@binding(3) @group(0) var u_texture: texture_2d<f32>;
+@group(0) @binding(3) var u_sampler: sampler;
+@group(0) @binding(4) var u_texture: texture_2d<f32>;
 
 struct FragmentOutput {
     @location(0) color: vec4f,
@@ -315,25 +325,46 @@ struct FragmentOutput {
 @fragment
 fn fragmentMain(input: VertexOutput) -> FragmentOutput {
     let GlobalLightLevel: f32 = 0.8;
-    let minGlobalLightLevel: f32 = 0.2;
+    let minGlobalLightLevel: f32 = 0.3;
     let maxGlobalLightLevel: f32 = 0.9;
+
+    let worldPos = input.v_position;
+    let lightPos = lightUniforms.lightPosition;
+    let lightDir = (lightPos - worldPos).xyz;
+    let dirUnit = normalize(lightDir);
+
+    var spotLight = 1.0;
+
+    const lightAngle = 15 * (3.14159265 / 180.0);
+    const lightAngleEnd = 30 * (3.14159265 / 180.0);
+    const phi = cos(lightAngle * 0.5);
+    const theta = cos(lightAngleEnd);
+    const spotParamsW = 1.0 / (phi - theta);
+    let spotDot = dot(lightUniforms.lightDirection.xyz, dirUnit.xyz);
+    if (spotDot < theta) {
+        spotLight = 0.0;
+    } else if (spotDot < phi) {
+        spotLight = pow((spotDot - theta) * spotParamsW, 1.0);
+    }
+    let spotLightColor = spotLight * lightUniforms.lightColor;
 
     var shade: f32 = (maxGlobalLightLevel - minGlobalLightLevel) * GlobalLightLevel + minGlobalLightLevel;
     shade = shade * input.v_color.a;
-
     shade = clamp(shade, minGlobalLightLevel, maxGlobalLightLevel);
 
     var light: vec4f = vec4f(shade, shade, shade, 1.0);
 
-    var color: vec4f = textureSample(u_texture, u_sampler, input.v_uv);
-
     let normal: vec3f = input.v_worldNormal;
-    let lightDir: vec3f = normalize(vec3f(1.0, 1.0, 1.0));
-    let diffuseFactor: f32 = max(dot(normal, lightDir), 0.0) * 0.6 + 0.4;
-    light = vec4f(light.rgb * diffuseFactor, light.a);
+    
+    let dirLightDir: vec3f = normalize(vec3f(1.0, 1.0, 1.0));
+    let diffuseFactor: f32 = max(dot(normal, dirLightDir), 0.0) * 1.0 + 0.4;
+    light = vec4f((light.rgb * diffuseFactor) + spotLightColor.rgb, light.a);
+
+    var color: vec4f = textureSample(u_texture, u_sampler, input.v_uv);
+    color = color * light;
 
     var output: FragmentOutput;
-    output.color = color * light;
+    output.color = color;
     output.position = input.v_view;
     output.normal = vec4f(normalize(input.v_normal) * 0.5 + 0.5, input.v_view.z);
     return output;

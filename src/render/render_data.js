@@ -1,16 +1,23 @@
-import { Matrix4 } from "../math/matrix4.js";
-
 export class RenderData {
-    constructor(device, canvas) {
+    constructor(engine) {
+        const device = engine.device;
+        const canvas = engine.canvas;
+        this.engine = engine;
         this.device = device;
         this.canvas = canvas;
         this._modelBuffers = [];
         this._viewUniformBuffer = device.createBuffer({
-            size: 64 * 2 + 16,
+            size: 64 * 2 + 16, // viewProjection + view + jitter
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "View Uniform"
         });
         this.frame = 0;
+
+        this._lightBuffer = device.createBuffer({
+            size: 64 + 16 + 16 + 16, // viewProject + position + direction + color
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "Light Uniform"
+        });
     }
 
     // Halton sequence for jitter
@@ -102,6 +109,44 @@ export class RenderData {
             0,
             16
         );
+
+
+        const light = this.engine.spotlight;
+        const lightViewProj = light.modelViewProjection;
+        const lightPosition = light.getWorldPosition();
+        const lightDirection = light.getWorldForward();
+        const lightColor = light.color;
+        const colorArray = new Float32Array([lightColor.r * light.intensity, lightColor.g * light.intensity, lightColor.b * light.intensity, 1.0]);
+
+        this.device.queue.writeBuffer(
+            this._lightBuffer,
+            0,
+            lightViewProj.buffer,
+            lightViewProj.byteOffset,
+            lightViewProj.byteLength
+        );
+        this.device.queue.writeBuffer(
+            this._lightBuffer,
+            64,
+            new Float32Array([lightPosition[0], lightPosition[1], lightPosition[2], 1.0]).buffer,
+            0,
+            16
+        );
+        this.device.queue.writeBuffer(
+            this._lightBuffer,
+            80,
+            new Float32Array([lightDirection[0], lightDirection[1], lightDirection[2], 0.0]).buffer,
+            0,
+            16
+        );
+        this.device.queue.writeBuffer(
+            this._lightBuffer,
+            96,
+            colorArray.buffer,
+            0,
+            16
+        );
+
         this.frame++;
     }
 }
