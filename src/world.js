@@ -160,7 +160,7 @@ export class World extends Transform {
 
         this.settings = {
             "loadDistance": 4,
-            "viewDistance": 2,
+            "viewDistance": 3,
             "clouds": 2,
             "enableAnimatedChunks": false,
             "mouseSensitivity": 1.49643

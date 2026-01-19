@@ -1,5 +1,7 @@
 export class PresentPass {
-    constructor(engine, previousPass) {
+    constructor(renderData, previousPass) {
+        this.renderData = renderData;
+        const engine = renderData.engine;
         this.engine = engine;
         this.canvas = engine.canvas;
         this.device = engine.device;
@@ -108,5 +110,5 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     let current = textureSampleLevel(img, imgSampler, input.v_uv, 0.0);
     let previous = textureSampleLevel(prevImg, imgSampler, input.v_uv, 0.0);
-    return mix(current, previous, 0.75);
+    return mix(current, previous, 0.5);
 }`;

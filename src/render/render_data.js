@@ -37,8 +37,8 @@ export class RenderData {
         const samples = 8;
         const idx = frame % samples;
         return {
-            x: ((this.halton(idx, 2) - 0.5) / this.canvas.width),
-            y: ((this.halton(idx, 3) - 0.5) / this.canvas.height)
+            x: ((this.halton(idx, 2) - 0.5) / this.canvas.width) * 0.1,
+            y: ((this.halton(idx, 3) - 0.5) / this.canvas.height) * 0.1
         };
     }
 

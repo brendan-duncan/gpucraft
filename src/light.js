@@ -4,7 +4,7 @@ export class Light extends Camera {
     constructor(parent) {
         super(parent);
         this.color = { r: 1.0, g: 1.0, b: 1.0 };
-        this.intensity = 0.8;
+        this.intensity = 0.5;
     }
 }
 

@@ -1,5 +1,7 @@
 export class ShadowPass {
-    constructor(engine) {
+    constructor(renderData) {
+        this.renderData = renderData;
+        const engine = renderData.engine;
         this.engine = engine;
         this.device = engine.device;
     }

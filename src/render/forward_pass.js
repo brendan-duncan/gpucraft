@@ -1,25 +1,17 @@
 import { Texture } from "../gpu/texture.js";
-import { RenderData } from "./render_data.js";
 
 export class ForwardPass {
-    constructor(engine) {
+    constructor(renderData, ssaoPass) {
+        this.renderData = renderData;
+        const engine = renderData.engine;
         this.engine = engine;
         this.device = engine.device;
         this.canvas = engine.canvas;
         this.camera = engine.camera;
-
-        this.renderData = new RenderData(this.engine);
-
-        this.sampler = engine.textureUtil.pointSampler;
+        this.ssaoPass = ssaoPass;
 
         this.outputTexture = null;
         this.outputTextureView = null;
-
-        this.normalTexture = null;
-        this.normalTextureView = null;
-
-        this.positionTexture = null;
-        this.positionTextureView = null;
 
         this.depthTexture = null;
         this.depthTextureView = null;
@@ -40,13 +32,12 @@ export class ForwardPass {
                 { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
                 { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+                { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
             ],
             label: "Forward Pass Bind Group Layout"
         });
 
-        this.pipelineLayout = this.device.createPipelineLayout({
-            bindGroupLayouts: [this.bindGroupLayout],
-        });
+        this.pipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout], label: "Forward Pass Pipeline Layout" });
 
         this.shaderModule = this.device.createShaderModule({ code: shaderSource, label: "Forward Pass Shader Module" });
         this.pipeline = this.device.createRenderPipeline({
@@ -59,44 +50,44 @@ export class ForwardPass {
                         // Position
                         arrayStride: 3 * 4,
                         attributes: [
-                        {
-                            shaderLocation: 0,
-                            offset: 0,
-                            format: "float32x3",
-                        },
+                            {
+                                shaderLocation: 0,
+                                offset: 0,
+                                format: "float32x3",
+                            },
                         ],
                     },
                     {
                         // Normal
                         arrayStride: 3 * 4,
                         attributes: [
-                        {
-                            shaderLocation: 1,
-                            offset: 0,
-                            format: "float32x3",
-                        },
+                            {
+                                shaderLocation: 1,
+                                offset: 0,
+                                format: "float32x3",
+                            },
                         ],
                     },
                     {
                         // Color
                         arrayStride: 4 * 4,
                         attributes: [
-                        {
-                            shaderLocation: 2,
-                            offset: 0,
-                            format: "float32x4",
-                        },
+                            {
+                                shaderLocation: 2,
+                                offset: 0,
+                                format: "float32x4",
+                            },
                         ],
                     },
                     {
                         // UV
                         arrayStride: 2 * 4,
                         attributes: [
-                        {
-                            shaderLocation: 3,
-                            offset: 0,
-                            format: "float32x2",
-                        },
+                            {
+                                shaderLocation: 3,
+                                offset: 0,
+                                format: "float32x2",
+                            },
                         ],
                     },
                 ],
@@ -104,11 +95,7 @@ export class ForwardPass {
             fragment: {
                 module: this.shaderModule,
                 entryPoint: "fragmentMain",
-                targets: [
-                    { format: "rgba8unorm" },
-                    { format: "rgba16float" },
-                    { format: "rgba16float" }
-                ],
+                targets: [ { format: "rgba8unorm" } ],
             },
             primitive: {
                 topology: "triangle-list",
@@ -138,8 +125,9 @@ export class ForwardPass {
                 { binding: 0, resource: { buffer: this.renderData._viewUniformBuffer } },
                 { binding: 1, resource: { buffer: this.renderData._lightBuffer } },
                 { binding: 2, resource: { buffer: modelBuffer } },
-                { binding: 3, resource: this.sampler },
+                { binding: 3, resource: this.engine.textureUtil.pointSampler },
                 { binding: 4, resource: this.textureView },
+                { binding: 5, resource: this.ssaoPass.outputTextureView },
             ],
             label: `Forward Pass Bind Group ${index}`,
         });
@@ -150,35 +138,17 @@ export class ForwardPass {
     }
 
     resize(width, height) {
+        this._bindGroups = [];
+
         this.outputTexture?.destroy();
         this.outputTexture = Texture.renderBuffer(
             this.device,
             width,
             height,
             "rgba8unorm",
-            "Output Color Texture"
+            "Forward Output Color"
         );
         this.outputTextureView = this.outputTexture.createView();
-
-        this.positionTexture?.destroy();
-        this.positionTexture = Texture.renderBuffer(
-            this.device,
-            width,
-            height,
-            "rgba16float",
-            "GBuffer Position"
-        );
-        this.positionTextureView = this.positionTexture.createView();
-
-        this.normalTexture?.destroy();
-        this.normalTexture = Texture.renderBuffer(
-            this.device,
-            width,
-            height,
-            "rgba16float",
-            "GBuffer Normal"
-        );
-        this.normalTextureView = this.normalTexture.createView();
 
         this.depthTexture?.destroy();
         this.depthTexture = Texture.renderBuffer(
@@ -186,7 +156,7 @@ export class ForwardPass {
             width,
             height,
             "depth24plus",
-            "GBuffer Depth"
+            "Forward Output Depth"
         );
         this.depthTextureView = this.depthTexture.createView({aspect: "depth-only"});
     }
@@ -195,9 +165,6 @@ export class ForwardPass {
         if (!this.textureLoaded) {
             return;
         }
-
-        this.renderData.updateViewUniforms(this.engine.camera);
-        this.renderData.updateWorldChunks(this.engine.world);
 
         const world = this.engine.world;
 
@@ -208,18 +175,6 @@ export class ForwardPass {
                     view: this.outputTextureView,
                     loadOp: "clear",
                     clearValue: { r: 0.1, g: 0.1, b: 0.2, a: 1.0 },
-                    storeOp: "store",
-                },
-                {
-                    view: this.positionTextureView,
-                    loadOp: "clear",
-                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-                    storeOp: "store",
-                },
-                {
-                    view: this.normalTextureView,
-                    loadOp: "clear",
-                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
                     storeOp: "store",
                 }
             ],
@@ -291,7 +246,8 @@ struct VertexOutput {
     @location(2) v_color: vec4f,
     @location(3) v_uv: vec2f,
     @location(4) v_view: vec4f,
-    @location(5) v_worldNormal: vec3f
+    @location(5) v_worldNormal: vec3f,
+    @location(6) v_screenPosition: vec4f
 };
 
 @vertex
@@ -310,16 +266,18 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     output.v_uv = input.a_uv;
     output.v_view = viewPosition;
     output.v_worldNormal = normalize((modelUniforms.model * vec4f(input.a_normal, 0.0)).xyz);
+
+    output.v_screenPosition = output.Position;
+
     return output;
 }
 
 @group(0) @binding(3) var u_sampler: sampler;
 @group(0) @binding(4) var u_texture: texture_2d<f32>;
+@group(0) @binding(5) var u_ssaoTexture: texture_2d<f32>;
 
 struct FragmentOutput {
     @location(0) color: vec4f,
-    @location(1) position: vec4f,
-    @location(2) normal: vec4f
 };
 
 @fragment
@@ -354,18 +312,22 @@ fn fragmentMain(input: VertexOutput) -> FragmentOutput {
 
     var light: vec4f = vec4f(shade, shade, shade, 1.0);
 
-    let normal: vec3f = input.v_worldNormal;
-    
+    var screenUv = ((input.v_screenPosition.xy / input.v_screenPosition.w) * 0.5 + 0.5).xy;
+    screenUv.y = 1.0 - screenUv.y;
+
+    let ssao = textureSampleLevel(u_ssaoTexture, u_sampler, screenUv.xy, 0).r;
+
+    let normal: vec3f = input.v_worldNormal;   
     let dirLightDir: vec3f = normalize(vec3f(1.0, 1.0, 1.0));
     let diffuseFactor: f32 = max(dot(normal, dirLightDir), 0.0) * 1.0 + 0.4;
     light = vec4f((light.rgb * diffuseFactor) + spotLightColor.rgb, light.a);
 
     var color: vec4f = textureSample(u_texture, u_sampler, input.v_uv);
-    color = color * light;
+
+    color = color * light * ssao;
 
     var output: FragmentOutput;
     output.color = color;
-    output.position = input.v_view;
-    output.normal = vec4f(normalize(input.v_normal) * 0.5 + 0.5, input.v_view.z);
+
     return output;
 }`;

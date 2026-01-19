@@ -1,0 +1,271 @@
+import { Texture } from "../gpu/texture.js";
+
+export class GBufferPass {
+    constructor(renderData) {
+        this.renderData = renderData;
+        const engine = renderData.engine;
+        this.engine = engine;
+        this.device = engine.device;
+
+        this.positionTexture = null;
+        this.positionTextureView = null;
+        this.normalTexture = null;
+        this.normalTextureView = null;
+        this.depthTexture = null;
+        this.depthTextureView = null;
+
+        this.bindGroupLayout = this.device.createBindGroupLayout({
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+                { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+            ],
+            label: "GBuffer Pass Bind Group Layout"
+        });
+
+        this.pipelineLayout = this.device.createPipelineLayout({
+            bindGroupLayouts: [this.bindGroupLayout],
+        });
+
+        this.shaderModule = this.device.createShaderModule({ code: shaderSource, label: "GBuffer Pass Shader Module" });
+        this.pipeline = this.device.createRenderPipeline({
+            layout: this.pipelineLayout,
+            vertex: {
+                module: this.shaderModule,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        // Position
+                        arrayStride: 3 * 4,
+                        attributes: [
+                        {
+                            shaderLocation: 0,
+                            offset: 0,
+                            format: "float32x3",
+                        },
+                        ],
+                    },
+                    {
+                        // Normal
+                        arrayStride: 3 * 4,
+                        attributes: [
+                        {
+                            shaderLocation: 1,
+                            offset: 0,
+                            format: "float32x3",
+                        },
+                        ],
+                    },
+                    {
+                        // Color
+                        arrayStride: 4 * 4,
+                        attributes: [
+                        {
+                            shaderLocation: 2,
+                            offset: 0,
+                            format: "float32x4",
+                        },
+                        ],
+                    },
+                    {
+                        // UV
+                        arrayStride: 2 * 4,
+                        attributes: [
+                        {
+                            shaderLocation: 3,
+                            offset: 0,
+                            format: "float32x2",
+                        },
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: this.shaderModule,
+                entryPoint: "fragmentMain",
+                targets: [
+                    { format: "rgba16float" },
+                    { format: "rgba16float" }
+                ],
+            },
+            primitive: {
+                topology: "triangle-list",
+                cullMode: "none",
+            },
+            depthStencil: {
+                depthWriteEnabled: true,
+                depthCompare: "less",
+                format: "depth24plus",
+            },
+            label: "GBuffer Pass Pipeline",
+        });
+
+        this._bindGroups = [];
+    }
+
+    resize(width, height) {
+        this.positionTexture?.destroy();
+        this.positionTexture = Texture.renderBuffer(
+            this.device,
+            width,
+            height,
+            "rgba16float",
+            "GBuffer Position"
+        );
+        this.positionTextureView = this.positionTexture.createView();
+
+        this.normalTexture?.destroy();
+        this.normalTexture = Texture.renderBuffer(
+            this.device,
+            width,
+            height,
+            "rgba16float",
+            "GBuffer Normal"
+        );
+        this.normalTextureView = this.normalTexture.createView();
+
+        this.depthTexture?.destroy();
+        this.depthTexture = Texture.renderBuffer(
+            this.device,
+            width,
+            height,
+            "depth24plus",
+            "GBuffer Depth"
+        );
+        this.depthTextureView = this.depthTexture.createView({aspect: "depth-only"});
+    }
+
+    _getBindGroup(index) {
+        if (index < this._bindGroups.length) {
+            return this._bindGroups[index];
+        }
+
+        const modelBuffer = this.renderData.getModelBuffer(index);
+
+        const bindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.renderData._viewUniformBuffer } },
+                { binding: 1, resource: { buffer: modelBuffer } },
+            ],
+            label: `GBuffer Pass Bind Group ${index}`,
+        });
+
+        this._bindGroups.push(bindGroup);
+
+        return bindGroup;
+    }
+
+    render(commandEncoder) {
+        commandEncoder.pushDebugGroup("GBuffer Pass");
+        const passEncoder = commandEncoder.beginRenderPass({
+            colorAttachments: [
+                {
+                    view: this.positionTextureView,
+                    loadOp: "clear",
+                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+                    storeOp: "store",
+                },
+                {
+                    view: this.normalTextureView,
+                    loadOp: "clear",
+                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+                    storeOp: "store",
+                }
+            ],
+            depthStencilAttachment: {
+                view: this.depthTextureView,
+                depthLoadOp: "clear",
+                depthClearValue: 1.0,
+                depthStoreOp: "store"
+            }
+        });
+        passEncoder.setPipeline(this.pipeline);
+        
+        const world = this.engine.world;
+        const numObjects = world.children.length;
+        let chunkIndex = 0;
+        for (let i = 0; i < numObjects; ++i) {
+            const chunk = world.children[i];
+            if (chunk.active && chunk.mesh) {
+                const mesh = chunk.mesh;
+                const bindGroup = this._getBindGroup(chunkIndex);
+                passEncoder.setBindGroup(0, bindGroup);
+                passEncoder.setVertexBuffer(0, mesh.buffers.points);
+                passEncoder.setVertexBuffer(1, mesh.buffers.normals);
+                passEncoder.setVertexBuffer(2, mesh.buffers.colors);
+                passEncoder.setVertexBuffer(3, mesh.buffers.uvs);
+                passEncoder.setIndexBuffer(mesh.buffers.triangles, "uint16");
+                passEncoder.drawIndexed(mesh.indexCount);
+                chunkIndex++;
+            }
+        }
+
+        passEncoder.end();
+        commandEncoder.popDebugGroup();
+    }
+}
+
+const shaderSource = `
+struct ViewUniforms {
+    viewProjection: mat4x4f,
+    view: mat4x4f,
+    jitter: vec4f
+};
+
+struct ModelUniforms {
+    model: mat4x4f
+};
+
+@group(0) @binding(0) var<uniform> viewUniforms: ViewUniforms;
+@group(0) @binding(1) var<uniform> modelUniforms: ModelUniforms;
+
+struct VertexInput {
+    @location(0) a_position: vec3f,
+    @location(1) a_normal: vec3f,
+    @location(2) a_color: vec4f,
+    @location(3) a_uv: vec2f
+};
+
+struct VertexOutput {
+    @builtin(position) Position: vec4f,
+    @location(0) v_position: vec4f,
+    @location(1) v_normal: vec3f,
+    @location(2) v_color: vec4f,
+    @location(3) v_uv: vec2f,
+    @location(4) v_view: vec4f,
+    @location(5) v_worldNormal: vec3f
+};
+
+@vertex
+fn vertexMain(input: VertexInput) -> VertexOutput {
+    var output: VertexOutput;
+    let worldPosition = modelUniforms.model * vec4f(input.a_position, 1.0);
+    var viewPosition = viewUniforms.view * worldPosition;
+    
+    output.Position = viewUniforms.viewProjection * worldPosition;
+    output.Position.x = output.Position.x + viewUniforms.jitter.x * output.Position.w;
+    output.Position.y = output.Position.y + viewUniforms.jitter.y * output.Position.w;
+
+    output.v_position = worldPosition;
+    output.v_normal = normalize(viewUniforms.view * vec4f(input.a_normal, 0.0)).xyz;
+    output.v_color = input.a_color;
+    output.v_uv = input.a_uv;
+    output.v_view = viewPosition;
+    output.v_worldNormal = normalize((modelUniforms.model * vec4f(input.a_normal, 0.0)).xyz);
+    return output;
+}
+
+struct FragmentOutput {
+    @location(0) position: vec4f,
+    @location(1) normal: vec4f
+};
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> FragmentOutput {
+    let worldPos = input.v_position;
+    let normal: vec3f = input.v_worldNormal;   
+    var output: FragmentOutput;
+    output.position = input.v_view;
+    output.normal = vec4f(normalize(input.v_normal) * 0.5 + 0.5, input.v_view.z);
+    return output;
+}`;

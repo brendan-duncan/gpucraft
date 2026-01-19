@@ -1,11 +1,13 @@
 import { Texture } from "../gpu/texture.js";
 
 export class SSAOPass {
-    constructor(engine, forwardPass) {
+    constructor(renderData, gbufferPass) {
+        this.renderData = renderData;
+        const engine = renderData.engine;
         this.engine = engine;
         this.canvas = engine.canvas;
         this.device = engine.device;
-        this.forwardPass = forwardPass;
+        this.gbufferPass = gbufferPass;
 
         this.ssaoTexture = Texture.renderBuffer(
             this.device,
@@ -16,8 +18,8 @@ export class SSAOPass {
         );
         this.ssaoTextureView = this.ssaoTexture.createView();
 
-        let noiseWidth = 8;
-        let noiseHeight = 8;
+        let noiseWidth = 4;
+        let noiseHeight = 4;
         this.noiseTexture = this.device.createTexture({
             size: { width: noiseWidth, height: noiseHeight },
             format: 'rgba32float',
@@ -71,8 +73,8 @@ export class SSAOPass {
         this.ssaoBindGroup = null;
 
         const blurModule = this.device.createShaderModule({ code: blurShader, label: "SSAO Blur Shader Module" });
-        this.blurTexture = null;
-        this.blurTextureView = null;
+        this.outputTexture = null;
+        this.outputTextureView = null;
         this.blurBindGroup = null;
         
         this.blurPipeline = this.device.createRenderPipeline({
@@ -89,34 +91,11 @@ export class SSAOPass {
             primitive: { topology: 'triangle-list' }
         });
 
-        this.outputTexture = null;
-        this.outputTextureView = null;
         this.depthTextureView = null;
-
-        this.ssaoOutputModule = this.device.createShaderModule({ code: outputShader, label: "SSAO Output Shader Module" });
-
-        this.ssaoOutputPipeline = this.device.createRenderPipeline({
-            layout: "auto",
-            label: "SSAO Output Pipeline",
-            vertex: {
-                module: this.ssaoOutputModule,
-                entryPoint: 'vertexMain'
-            },
-            fragment: {
-                module: this.ssaoOutputModule,
-                entryPoint: 'fragmentMain',
-                targets: [ { format: "rgba8unorm" } ]
-            },
-            primitive: {
-                topology: 'triangle-list',
-            }
-        });
-
-        this.ssaoOutputBindGroup = null;
     }
 
     resize(width, height) {
-        this.depthTextureView = this.forwardPass.depthTextureView;
+        this.depthTextureView = this.gbufferPass.depthTextureView;
 
         this.ssaoTexture?.destroy();
         this.ssaoTexture = Texture.renderBuffer(
@@ -134,27 +113,10 @@ export class SSAOPass {
             entries: [
                 { binding: 0, resource: { buffer: this.ssaoBuffer } },
                 { binding: 1, resource: this.sampler },
-                { binding: 2, resource: this.forwardPass.positionTextureView },
-                { binding: 3, resource: this.forwardPass.normalTextureView },
+                { binding: 2, resource: this.gbufferPass.positionTextureView },
+                { binding: 3, resource: this.gbufferPass.normalTextureView },
                 { binding: 4, resource: this.depthTextureView },
                 { binding: 5, resource: this.noiseTextureView },
-            ],
-        });
-
-        this.blurTexture?.destroy();
-        this.blurTexture = Texture.renderBuffer(
-            this.device,
-            width,
-            height,
-            "r8unorm",
-            "SSAO Blur Texture"
-        );
-        this.blurTextureView = this.blurTexture.createView();
-        this.blurBindGroup = this.device.createBindGroup({
-            layout: this.blurPipeline.getBindGroupLayout(0),
-            label: "SSAO Blur Bind Group",
-            entries: [
-                { binding: 0, resource: this.ssaoTextureView }
             ],
         });
 
@@ -163,18 +125,17 @@ export class SSAOPass {
             this.device,
             width,
             height,
-            "rgba8unorm",
-            "SSAO Output"
+            "r8unorm",
+            "SSAO Blur Texture"
         );
         this.outputTextureView = this.outputTexture.createView();
 
-        this.ssaoOutputBindGroup = this.device.createBindGroup({
-            layout: this.ssaoOutputPipeline.getBindGroupLayout(0),
-            label: "SSAO Output Bind Group",
+        this.blurBindGroup = this.device.createBindGroup({
+            layout: this.blurPipeline.getBindGroupLayout(0),
+            label: "SSAO Blur Bind Group",
             entries: [
-                { binding: 0, resource: this.sampler },
-                { binding: 1, resource: this.forwardPass.outputTextureView },
-                { binding: 2, resource: this.blurTextureView },
+                { binding: 0, resource: this.ssaoTextureView },
+                { binding: 1, resource: this.engine.textureUtil.linearSampler }
             ],
         });
     }
@@ -214,7 +175,7 @@ export class SSAOPass {
         {
             const passEncoder = commandEncoder.beginRenderPass({
                 colorAttachments: [{
-                    view: this.blurTextureView,
+                    view: this.outputTextureView,
                     loadOp: "clear",
                     clearValue: { r: 0, g: 0, b: 0, a: 1.0 },
                     storeOp: "store",
@@ -227,21 +188,6 @@ export class SSAOPass {
         }
         commandEncoder.popDebugGroup();
 
-        commandEncoder.pushDebugGroup("Apply");
-        {
-            const passEncoder = commandEncoder.beginRenderPass({
-                colorAttachments: [{
-                    view: this.outputTextureView,
-                    loadOp: "load",
-                    storeOp: "store",
-                }],
-            });
-            passEncoder.setPipeline(this.ssaoOutputPipeline);
-            passEncoder.setBindGroup(0, this.ssaoOutputBindGroup);
-            passEncoder.draw(3, 1, 0, 0);
-            passEncoder.end();
-        }
-        commandEncoder.popDebugGroup();
         commandEncoder.popDebugGroup();
     }
 }
@@ -356,6 +302,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
 
 const blurShader = `
 @group(0) @binding(0) var aoTex: texture_2d<f32>;
+@group(0) @binding(1) var aoSampler: sampler;
 
 struct VertexOutput {
     @builtin(position) v_position: vec4<f32>,
@@ -378,57 +325,16 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) f32 {
     let texSize = textureDimensions(aoTex);
-    let texPos = vec2i(input.v_uv * vec2f(texSize));
-
+    let texelSize = vec2f(1.0) / vec2f(texSize);
     var result = 0.0;
-    var weight = 0.0;
-
-    for (var x = -2; x <= 2; x = x + 1) {
-        for (var y = -2; y <= 2; y = y + 1) {
-            let samplePos = texPos + vec2i(x, y);
-    
-            if (samplePos.x < 0 || samplePos.x >= i32(texSize.x) || 
-                samplePos.y < 0 || samplePos.y >= i32(texSize.y)) {
-                continue;
-            }
-   
-            result += textureLoad(aoTex, samplePos, 0).r;
-            weight += 1.0;
+    const blurSize = 4;
+    var hlim = vec2f(f32(-blurSize) * 0.5 + 0.5);
+    for (var x = 0; x < blurSize; x = x + 1) {
+        for (var y = 0; y < blurSize; y = y + 1) {
+            let offset = (hlim + vec2f(f32(x), f32(y))) * texelSize;
+            let samplePos = input.v_uv + offset;
+            result += textureSampleLevel(aoTex, aoSampler, samplePos, 0).r;  
         }
     }
- 
-    return result / weight;
-}`;
-
-const outputShader = `
-var<private> posTex: array<vec4<f32>, 3> = array<vec4<f32>, 3>(
-    vec4<f32>(-1.0, 1.0, 0.0, 0.0),
-    vec4<f32>(3.0, 1.0, 2.0, 0.0),
-    vec4<f32>(-1.0, -3.0, 0.0, 2.0));
-
-struct VertexOutput {
-    @builtin(position) v_position: vec4<f32>,
-    @location(0) v_uv : vec2<f32>
-};
-
-@vertex
-fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var output: VertexOutput;
-    output.v_uv = posTex[vertexIndex].zw;
-    output.v_position = vec4<f32>(posTex[vertexIndex].xy, 0.0, 1.0);
-    return output;
-}
-
-@group(0) @binding(0) var imgSampler: sampler;
-@group(0) @binding(1) var img: texture_2d<f32>;
-@group(0) @binding(2) var ssao: texture_2d<f32>;
-
-@fragment
-fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-    let color = textureSampleLevel(img, imgSampler, input.v_uv, 0.0);
-    let ao = textureSampleLevel(ssao, imgSampler, input.v_uv, 0.0).r;
-
-    return vec4<f32>(color.rgb * ao, color.a);
-    //return color;
-    //return vec4<f32>(ao, ao, ao, 1.0);
+    return result / f32(blurSize * blurSize);
 }`;

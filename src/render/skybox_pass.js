@@ -5,7 +5,9 @@ import { Matrix4 } from "../math/matrix4.js";
 import { Vector3 } from "../math/vector3.js";
 
 export class SkyboxPass {
-  constructor(engine, previousPass) {
+  constructor(renderData, previousPass) {
+    this.renderData = renderData;
+    const engine = renderData.engine;
     this.engine = engine;
     this.device = engine.device;
     this.previousPass = previousPass;
@@ -122,6 +124,16 @@ export class SkyboxPass {
     });
 
     this.initialized = true;
+  }
+
+  // This pass renders into the previous pass's output texture,
+  // so we just pass that texture through to the next pass.
+  get outputTexture() {
+    return this.previousPass.outputTexture;
+  }
+
+  get outputTextureView() {
+    return this.previousPass.outputTextureView;
   }
 
   resize(width, height) {
