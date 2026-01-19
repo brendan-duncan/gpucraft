@@ -5,15 +5,17 @@ export class RenderData {
         this.engine = engine;
         this.device = device;
         this.canvas = canvas;
-        this._modelBuffers = [];
-        this._viewUniformBuffer = device.createBuffer({
+
+        this.modelBuffers = [];
+
+        this.viewUniformBuffer = device.createBuffer({
             size: 64 * 2 + 16, // viewProjection + view + jitter
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "View Uniform"
         });
         this.frame = 0;
 
-        this._lightBuffer = device.createBuffer({
+        this.lightUniformBuffer = device.createBuffer({
             size: 64 + 16 + 16 + 16, // viewProject + position + direction + color
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "Light Uniform"
@@ -43,8 +45,8 @@ export class RenderData {
     }
 
     getModelBuffer(index) {
-        if (index < this._modelBuffers.length) {
-            return this._modelBuffers[index];
+        if (index < this.modelBuffers.length) {
+            return this.modelBuffers[index];
         }
 
         const buffer = this.device.createBuffer({
@@ -52,7 +54,7 @@ export class RenderData {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: `Model Uniform ${index}`,
         });
-        this._modelBuffers.push(buffer);
+        this.modelBuffers.push(buffer);
 
         return buffer;
     }
@@ -86,7 +88,7 @@ export class RenderData {
         const worldToView = camera.worldToView;
 
         this.device.queue.writeBuffer(
-            this._viewUniformBuffer,
+            this.viewUniformBuffer,
             0,
             modelViewProjection.buffer,
             modelViewProjection.byteOffset,
@@ -94,7 +96,7 @@ export class RenderData {
         );
 
         this.device.queue.writeBuffer(
-            this._viewUniformBuffer,
+            this.viewUniformBuffer,
             64,
             worldToView.buffer,
             worldToView.byteOffset,
@@ -103,7 +105,7 @@ export class RenderData {
 
         const jitter = this.getJitter(this.frame);
         this.device.queue.writeBuffer(
-            this._viewUniformBuffer,
+            this.viewUniformBuffer,
             128,
             new Float32Array([jitter.x, jitter.y, 0, 0]).buffer,
             0,
@@ -119,28 +121,28 @@ export class RenderData {
         const colorArray = new Float32Array([lightColor.r * light.intensity, lightColor.g * light.intensity, lightColor.b * light.intensity, 1.0]);
 
         this.device.queue.writeBuffer(
-            this._lightBuffer,
+            this.lightUniformBuffer,
             0,
             lightViewProj.buffer,
             lightViewProj.byteOffset,
             lightViewProj.byteLength
         );
         this.device.queue.writeBuffer(
-            this._lightBuffer,
+            this.lightUniformBuffer,
             64,
             new Float32Array([lightPosition[0], lightPosition[1], lightPosition[2], 1.0]).buffer,
             0,
             16
         );
         this.device.queue.writeBuffer(
-            this._lightBuffer,
+            this.lightUniformBuffer,
             80,
             new Float32Array([lightDirection[0], lightDirection[1], lightDirection[2], 0.0]).buffer,
             0,
             16
         );
         this.device.queue.writeBuffer(
-            this._lightBuffer,
+            this.lightUniformBuffer,
             96,
             colorArray.buffer,
             0,

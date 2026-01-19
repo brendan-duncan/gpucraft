@@ -144,7 +144,7 @@ export class GBufferPass {
         const bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
             entries: [
-                { binding: 0, resource: { buffer: this.renderData._viewUniformBuffer } },
+                { binding: 0, resource: { buffer: this.renderData.viewUniformBuffer } },
                 { binding: 1, resource: { buffer: modelBuffer } },
             ],
             label: `GBuffer Pass Bind Group ${index}`,

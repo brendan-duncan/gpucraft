@@ -25,21 +25,6 @@ export class SSAOPass {
             format: 'rgba32float',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
         });
-        this.noiseTextureView = this.noiseTexture.createView();
-        const noiseData = new Float32Array(4 * noiseWidth * noiseHeight);
-        for (let i = 0; i < noiseWidth * noiseHeight; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            noiseData[i * 4] = Math.cos(angle);
-            noiseData[i * 4 + 1] = Math.sin(angle);
-            noiseData[i * 4 + 2] = 0;
-            noiseData[i * 4 + 3] = 0;
-        }
-        this.device.queue.writeTexture(
-            { texture: this.noiseTexture },
-            noiseData,
-            { bytesPerRow: noiseWidth * 16 },
-            { width: noiseWidth, height: noiseHeight }
-        );
 
         this.ssaoModule = this.device.createShaderModule({ code: ssaoShader, label: "SSAO Pass Shader Module" });
 
@@ -65,7 +50,7 @@ export class SSAOPass {
         this.ssaoBuffer = this.device.createBuffer({
             size: 4*4 + 16*4, // 4 floats for params + 16 floats for projection matrix
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "SSAO Params Buffer"
+            label: "SSAO Uniforms"
         });
 
         this._updateSSAOParams = true;
@@ -90,13 +75,9 @@ export class SSAOPass {
             },
             primitive: { topology: 'triangle-list' }
         });
-
-        this.depthTextureView = null;
     }
 
     resize(width, height) {
-        this.depthTextureView = this.gbufferPass.depthTextureView;
-
         this.ssaoTexture?.destroy();
         this.ssaoTexture = Texture.renderBuffer(
             this.device,
@@ -115,8 +96,6 @@ export class SSAOPass {
                 { binding: 1, resource: this.sampler },
                 { binding: 2, resource: this.gbufferPass.positionTextureView },
                 { binding: 3, resource: this.gbufferPass.normalTextureView },
-                { binding: 4, resource: this.depthTextureView },
-                { binding: 5, resource: this.noiseTextureView },
             ],
         });
 
@@ -221,30 +200,22 @@ struct SSAOParams {
     projection: mat4x4<f32>,
 };
 
-@group(0) @binding(0) var<uniform> params: SSAOParams;
-@group(0) @binding(1) var imgSampler: sampler;
-@group(0) @binding(2) var viewPosTex: texture_2d<f32>;
-@group(0) @binding(3) var normalTex: texture_2d<f32>;
-@group(0) @binding(4) var depthTex: texture_depth_2d;
-@group(0) @binding(5) var noiseTex: texture_2d<f32>;
-
 fn rand(co: vec2f) -> f32 {
     return abs(fract(sin(dot(co, vec2f(12.9898, 78.233))) * 43758.5453));
 }
 
-fn linearEyeDepth(depth: f32) -> f32 {
-    let zNear = 0.1;
-    let zFar = 1000.0;
-    return (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));
-}
+@group(0) @binding(0) var<uniform> ssaoUniforms: SSAOParams;
+@group(0) @binding(1) var imgSampler: sampler;
+@group(0) @binding(2) var viewPosTex: texture_2d<f32>;
+@group(0) @binding(3) var normalTex: texture_2d<f32>;
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
-    let texSize = textureDimensions(depthTex, 0);
+    let texSize = textureDimensions(normalTex, 0);
     let fragCoord = input.v_uv * vec2f(texSize);
 
     var viewPosition = textureSampleLevel(viewPosTex, imgSampler, input.v_uv, 0.0).xyz;
-    let depth = linearEyeDepth(textureLoad(depthTex, vec2<i32>(fragCoord), 0));
+
     let normalData = textureSampleLevel(normalTex, imgSampler, input.v_uv, 0);
     var normal = normalize(normalData.xyz * 2.0 - 1.0);
 
@@ -256,7 +227,10 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
     let noiseScale = vec2f(f32(texSize.x) / 4.0, f32(texSize.y) / 4.0);
     let noiseUV = input.v_uv * noiseScale;
     let noiseCoord = vec2i(i32(noiseUV.x) % 4, i32(noiseUV.y) % 4);
-    let randomVec = textureLoad(noiseTex, noiseCoord, 0).xyz;
+    let randomVec = vec3f(
+        rand(input.v_uv + vec2f(f32(noiseCoord.x), f32(noiseCoord.y))) * 2.0 - 1.0,
+        rand(input.v_uv + vec2f(f32(noiseCoord.y), f32(noiseCoord.x))) * 2.0 - 1.0,
+        rand(input.v_uv + vec2f(f32(noiseCoord.y + noiseCoord.x), f32(noiseCoord.x))));
 
     // Create TBN matrix in view space
     let tangent = normalize(randomVec - normal * dot(randomVec, normal));
@@ -269,13 +243,13 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
     for (var i = 0; i < numSamples; i = i + 1) {
         let t = f32(i) / f32(numSamples);
         let angle = t * 6.283185 * 4.0;
-        let radius = sqrt(t) * params.radius;
+        let radius = sqrt(t) * ssaoUniforms.radius;
 
         let offset = vec3f(cos(angle), sin(angle), t) * radius;
         let samplePos = viewPosition + (tbn * offset);
 
         // Project sample
-        var sampleProj = params.projection * vec4f(samplePos, 1.0);
+        var sampleProj = ssaoUniforms.projection * vec4f(samplePos, 1.0);
         sampleProj = sampleProj / sampleProj.w;
         let sampleUV = vec2f(sampleProj.x * 0.5 + 0.5, (1.0 - sampleProj.y) * 0.5);
 
@@ -288,16 +262,16 @@ fn fragmentMain(input: VertexOutput) -> @location(0) f32 {
         let sampleViewPos = textureSampleLevel(viewPosTex, imgSampler, sampleUV, 0.0).xyz;
 
         // Range check
-        let rangeCheck = smoothstep(0.0, 1.0, params.radius / abs(viewPosition.z - sampleViewPos.z));
+        let rangeCheck = smoothstep(0.0, 1.0, ssaoUniforms.radius / abs(viewPosition.z - sampleViewPos.z));
 
         // Horizon-based occlusion
-        let occluded = select(0.0, rangeCheck, validSample && sampleViewPos.z > samplePos.z + params.bias);
+        let occluded = select(0.0, rangeCheck, validSample && sampleViewPos.z > samplePos.z + ssaoUniforms.bias);
         occlusion += occluded;
     }
 
     occlusion = 1.0 - (occlusion / f32(numSamples));
 
-    return pow(occlusion, params.intensity);
+    return pow(occlusion, ssaoUniforms.intensity);
 }`;
 
 const blurShader = `
